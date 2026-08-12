@@ -10,7 +10,7 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
   const attempts = new Map<string, number[]>();
   const windowMs = options.windowSeconds * 1000;
   const maxBuckets = 10_001;
-  let failuresRecorded = 0;
+  let attemptsRecorded = 0;
 
   function clientKey(clientId: string): string {
     const key = `client:${clientId}`;
@@ -40,22 +40,23 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
   }
 
   return {
-    check(clientId, now) {
-      const client = decision(recent(clientKey(clientId), now), options.maxAttempts, now);
-      const global = decision(recent("global", now), options.globalMaxAttempts, now);
-      if (!client.limited) return global;
-      if (!global.limited) return client;
-      return {
-        limited: true,
-        retryAfterSeconds: Math.max(client.retryAfterSeconds ?? 1, global.retryAfterSeconds ?? 1),
-      };
-    },
-    recordFailure(clientId, now) {
-      failuresRecorded += 1;
-      if (failuresRecorded % 128 === 0) cleanAll(now);
+    consume(clientId, now) {
+      attemptsRecorded += 1;
+      if (attemptsRecorded % 128 === 0) cleanAll(now);
       const key = clientKey(clientId);
-      attempts.set(key, [...recent(key, now), now]);
-      attempts.set("global", [...recent("global", now), now]);
+      const clientValues = recent(key, now);
+      const globalValues = recent("global", now);
+      const client = decision(clientValues, options.maxAttempts, now);
+      const global = decision(globalValues, options.globalMaxAttempts, now);
+      if (client.limited || global.limited) {
+        return {
+          limited: true,
+          retryAfterSeconds: Math.max(client.retryAfterSeconds ?? 1, global.retryAfterSeconds ?? 1),
+        };
+      }
+      attempts.set(key, [...clientValues, now]);
+      attempts.set("global", [...globalValues, now]);
+      return { limited: false };
     },
     reset(clientId) {
       attempts.delete(clientKey(clientId));

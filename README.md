@@ -163,7 +163,7 @@ export const proxy = sitegate({
 | `excludedPaths` | none | Always wins over `protectedPaths`; login/logout remain handled. |
 | `secureCookies` | `"auto"` | Adds `Secure` for HTTPS. Set `true` when TLS is terminated before an HTTP origin and the request URL is not reconstructed as HTTPS. |
 | `sameSite` | `"strict"` | May be changed to `"lax"` when cross-site navigation continuity matters. |
-| `rateLimit` | process-local rolling window | `10` failures/trusted client and `200` globally per 15 minutes. Without a trusted client identity, the shared limit is `200`. Set `false` only when an equivalent outer control exists. |
+| `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Without a trusted client identity, the shared limit is `200`. Set `false` only when an equivalent outer control exists. |
 | `branding` | Sitegate defaults | Text, a root-relative logo, and a six-digit accent color. No raw HTML. The logo path is publicly readable so it can load before login. |
 | `onEvent` | none | Receives secret-free success/failure/limit/session/logout events. |
 
@@ -208,7 +208,8 @@ logic.
 The default limiter is bounded to the current JavaScript process. It is useful on a single server
 and as a baseline on serverless instances, but it is not coordinated across processes, regions, or
 cold starts. For an internet-exposed preview on horizontally scaled infrastructure, pass a
-`LoginAttemptLimiter` backed by your existing shared store and add rate limiting at the CDN/WAF.
+`LoginAttemptLimiter` backed by your existing shared store. Its `consume` operation must atomically
+admit and record each attempt. Also add rate limiting at the CDN/WAF.
 
 By default Sitegate does not trust `X-Forwarded-For`, so untrusted clients cannot rotate a spoofed
 header to evade the local limiter. Set `rateLimit.trustProxy: true` only when your platform strips
