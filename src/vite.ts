@@ -33,25 +33,22 @@ function requestUrl(request: IncomingMessage): URL {
   return new URL(request.url ?? "/", `${protocol}://${host}`);
 }
 
-function readBoundedBody(request: IncomingMessage): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let captured = 0;
-    request.on("data", (chunk: Buffer | string) => {
-      if (captured >= MAX_CAPTURED_BODY_BYTES) return;
-      const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-      const remaining = MAX_CAPTURED_BODY_BYTES - captured;
-      const selected = bytes.subarray(0, remaining);
-      chunks.push(selected);
-      captured += selected.byteLength;
-    });
-    request.once("end", () => {
-      const body = Buffer.concat(chunks);
-      resolve(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer);
-    });
-    request.once("error", reject);
-    request.once("aborted", () => reject(new Error("Request body was aborted.")));
-  });
+async function readBoundedBody(request: IncomingMessage): Promise<ArrayBuffer> {
+  const chunks: Buffer[] = [];
+  let captured = 0;
+  for await (const chunk of request.iterator({ destroyOnReturn: false })) {
+    const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    const remaining = MAX_CAPTURED_BODY_BYTES - captured;
+    const selected = bytes.subarray(0, remaining);
+    chunks.push(selected);
+    captured += selected.byteLength;
+    if (captured >= MAX_CAPTURED_BODY_BYTES) {
+      request.resume();
+      break;
+    }
+  }
+  const body = Buffer.concat(chunks);
+  return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
 }
 
 async function webRequest(request: IncomingMessage, gate: Sitegate): Promise<Request> {

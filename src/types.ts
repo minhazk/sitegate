@@ -21,15 +21,15 @@ export interface RateLimitDecision {
  * application runs in multiple regions or processes.
  */
 export interface LoginAttemptLimiter {
-  check(clientId: string, now: number): MaybePromise<RateLimitDecision>;
-  recordFailure(clientId: string, now: number): MaybePromise<void>;
+  /** Atomically admit and record one login attempt. */
+  consume(clientId: string, now: number): MaybePromise<RateLimitDecision>;
   reset(clientId: string): MaybePromise<void>;
 }
 
 export interface RateLimitOptions {
-  /** Failed attempts allowed per client. Default: 10 with a trusted client ID, otherwise global max. */
+  /** Attempts allowed per client. Default: 10 with a trusted client ID, otherwise global max. */
   maxAttempts?: number;
-  /** Failed attempts allowed globally in the rolling window. Default: 200. */
+  /** Attempts allowed globally in the rolling window. Default: 200. */
   globalMaxAttempts?: number;
   /** Rolling-window duration in seconds. Default: 900 (15 minutes). */
   windowSeconds?: number;

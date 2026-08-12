@@ -191,6 +191,17 @@ describe("login and logout security", () => {
     expect(limited.headers.get("retry-after")).toBeTruthy();
   });
 
+  it("does not admit concurrent attempts beyond the configured limit", async () => {
+    const gate = makeGate({
+      rateLimit: { maxAttempts: 2, globalMaxAttempts: 20, windowSeconds: 60 },
+    });
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, (_, index) => submitLogin(gate, `wrong password ${index}`)),
+    );
+    expect(responses.filter((response) => response.status === 401)).toHaveLength(2);
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(8);
+  });
+
   it("invalidates the browser cookie on same-origin POST logout", async () => {
     const gate = makeGate();
     const response = await gate.handle(
@@ -228,6 +239,31 @@ describe("login and logout security", () => {
       blocked,
     );
     expect(oversized.status).toBe(413);
+
+    let cancelled = false;
+    const streamedBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4096));
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const streamed = await gate.handle(
+      new Request(`${BASE_URL}${gate.loginPath}`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: streamedBody,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+      blocked,
+    );
+    expect(streamed.status).toBe(413);
+    expect(cancelled).toBe(true);
   });
 
   it("never redirects to an external origin after login", async () => {

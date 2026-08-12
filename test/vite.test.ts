@@ -1,4 +1,5 @@
 import type { AddressInfo } from "node:net";
+import { request as httpRequest } from "node:http";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
@@ -76,6 +77,30 @@ describe("Vite adapter", () => {
     expect(protectedPage.headers.get("cache-control")).toContain("no-store");
     expect(protectedPage.headers.get("vary")).toContain("Cookie");
     expect(protectedPage.headers.get("x-robots-tag")).toContain("noindex");
+  });
+
+  it("rejects oversized chunked login bodies before the request ends", async () => {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const request = httpRequest(
+        `${baseUrl}/_sitegate/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Origin: baseUrl,
+            "Sec-Fetch-Site": "same-origin",
+          },
+        },
+        (response) => {
+          resolve(response.statusCode);
+          response.resume();
+          request.end();
+        },
+      );
+      request.once("error", reject);
+      request.write("x".repeat(4097));
+    });
+    expect(status).toBe(413);
   });
 
   it("registers the same gate with Vite's preview-server hook", () => {
