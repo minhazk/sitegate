@@ -16,4 +16,8 @@ All notable changes to Sitegate will be documented here. The project follows
 - Route policy, security headers, indexing protection, and pluggable rate limiting.
 - Unit, integration, security, and bypass tests.
 
+### Changed
+
+- Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
+
 [Unreleased]: https://github.com/minhazk/sitegate/compare/v0.1.0...HEAD

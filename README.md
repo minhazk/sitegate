@@ -32,7 +32,7 @@ application using server-only configuration.
 pnpm add sitegate
 ```
 
-Sitegate requires Node.js 20.19 or newer. Its optional framework peers support Next.js 14.2–16 and
+Sitegate requires Node.js 24 LTS. Its optional framework peers support Next.js 14.2–16 and
 Vite 6–8.
 
 ## Minimal Next.js setup
