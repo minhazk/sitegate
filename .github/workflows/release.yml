@@ -3,6 +3,12 @@ name: Publish package
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,14 +22,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
       - name: Verify release tag matches package version
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
         run: |
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          TAG_SHA="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          fi
           test "$RELEASE_TAG" = "v$PACKAGE_VERSION"
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          test "$(git rev-parse HEAD)" = "$TAG_SHA"
+          git merge-base --is-ancestor "$TAG_SHA" origin/main
+          git switch --force-create main "$TAG_SHA"
+          test "$(git branch --show-current)" = "main"
+          test -z "$(git status --porcelain)"
       - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
         with:
           version: 11.16.0
