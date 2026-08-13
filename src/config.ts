@@ -1,4 +1,5 @@
 import type { PathMatcher, SitegateBranding, SitegateConfig, SitegateSameSite } from "./types.js";
+import { canonicalPathname } from "./paths.js";
 
 export interface ResolvedConfig {
   password: string;
@@ -28,7 +29,8 @@ function assertInternalPath(value: string, field: string): void {
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.includes("?") ||
-    value.includes("#")
+    value.includes("#") ||
+    canonicalPathname(value) !== value
   ) {
     throw new SitegateConfigurationError(
       `${field} must be a root-relative path without a query or hash.`,
@@ -106,13 +108,17 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
   const logo = config.branding?.logo;
   if (
     logo !== undefined &&
-    (!logo.startsWith("/") || logo.startsWith("//") || logo.includes("\\"))
+    (!logo.startsWith("/") ||
+      logo.startsWith("//") ||
+      logo.includes("\\") ||
+      logo.includes("?") ||
+      logo.includes("#") ||
+      canonicalPathname(logo) !== logo)
   ) {
-    throw new SitegateConfigurationError("branding.logo must be a root-relative URL.");
+    throw new SitegateConfigurationError(
+      "branding.logo must be a root-relative path without a query or hash.",
+    );
   }
-  const logoPath =
-    logo === undefined ? undefined : new URL(logo, "https://sitegate.invalid").pathname;
-
   return {
     password: config.password,
     secret: config.secret,
@@ -121,10 +127,7 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
     loginPath,
     logoutPath,
     protectedPaths: config.protectedPaths,
-    excludedPaths: [
-      ...(config.excludedPaths ?? []),
-      ...(logoPath === undefined ? [] : [(pathname: string) => pathname === logoPath]),
-    ],
+    excludedPaths: config.excludedPaths ?? [],
     secureCookies: config.secureCookies ?? "auto",
     sameSite: config.sameSite ?? "strict",
     rateLimit: config.rateLimit === undefined ? {} : config.rateLimit,

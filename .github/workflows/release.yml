@@ -14,6 +14,16 @@ jobs:
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Verify release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
+          test "$RELEASE_TAG" = "v$PACKAGE_VERSION"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
         with:
           version: 11.16.0
@@ -23,4 +33,4 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm check
       - run: pnpm config set registry https://registry.npmjs.org
-      - run: pnpm publish --access public --provenance --no-git-checks
+      - run: pnpm publish --access public --provenance

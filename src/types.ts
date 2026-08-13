@@ -78,7 +78,7 @@ export interface SitegateConfig {
   /** Disable only if equivalent protection exists outside Sitegate. */
   rateLimit?: false | RateLimitOptions;
   branding?: SitegateBranding;
-  /** Receives security events; Sitegate never includes passwords, secrets, or tokens. */
+  /** Receives best-effort, non-blocking security events without passwords, secrets, or tokens. */
   onEvent?: (event: SitegateEvent) => MaybePromise<void>;
   /** Test/support hook for supplying time. */
   now?: () => number;

@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:
 import { Buffer } from "node:buffer";
 import { loadEnv, type Plugin } from "vite";
 import { createSitegate } from "./gate.js";
+import { canonicalPathname } from "./paths.js";
 import type { Sitegate, SitegateConfig } from "./types.js";
 
 const CONTINUE_HEADER = "x-sitegate-connect-next";
@@ -56,9 +57,11 @@ async function webRequest(request: IncomingMessage, gate: Sitegate): Promise<Req
   const method = request.method ?? "GET";
   const headers = requestHeaders(request.headers);
   const init: RequestInit = { method, headers };
-  if (method === "POST" && url.pathname === gate.loginPath) {
+  if (method === "POST" && canonicalPathname(url.pathname) === gate.loginPath) {
     const contentLength = Number(headers.get("content-length") ?? "0");
-    if (!Number.isFinite(contentLength) || contentLength <= 4096) {
+    if (Number.isFinite(contentLength) && contentLength > 4096) {
+      request.resume();
+    } else {
       init.body = await readBoundedBody(request);
     }
   }

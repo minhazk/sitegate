@@ -103,6 +103,53 @@ describe("Vite adapter", () => {
     expect(status).toBe(413);
   });
 
+  it("rejects and drains declared-oversized login bodies before the request ends", async () => {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const request = httpRequest(
+        `${baseUrl}/_sitegate/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Length": "5000",
+            Origin: baseUrl,
+            "Sec-Fetch-Site": "same-origin",
+          },
+        },
+        (response) => {
+          resolve(response.statusCode);
+          response.resume();
+          request.end();
+        },
+      );
+      request.once("error", reject);
+      request.write("x");
+    });
+    expect(status).toBe(413);
+  });
+
+  it("reads login bodies for canonicalized login-path aliases", async () => {
+    const loginPage = await fetch(`${baseUrl}/_sitegate/login`);
+    const html = await loginPage.text();
+    const csrfToken = /name="csrf" value="([^"]+)"/u.exec(html)?.[1];
+    const csrfCookie = /(?:^|, )sitegate_csrf=([^;]+)/u.exec(
+      loginPage.headers.get("set-cookie") ?? "",
+    )?.[1];
+
+    const login = await fetch(`${baseUrl}/_sitegate%2Flogin`, {
+      method: "POST",
+      body: new URLSearchParams({ csrf: csrfToken ?? "", password: TEST_PASSWORD }),
+      headers: {
+        Cookie: `sitegate_csrf=${csrfCookie}`,
+        Origin: baseUrl,
+        "Sec-Fetch-Site": "same-origin",
+      },
+      redirect: "manual",
+    });
+    expect(login.status).toBe(303);
+    expect(login.headers.get("set-cookie")).toContain("sitegate_session=");
+  });
+
   it("registers the same gate with Vite's preview-server hook", () => {
     const use = vi.fn();
     const configurePreview = plugin.configurePreviewServer as unknown as (server: {

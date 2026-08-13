@@ -81,6 +81,24 @@ describe("request protection", () => {
     expect(onEvent).toHaveBeenCalledWith({ type: "login_failed", clientId: "untrusted-proxy" });
   });
 
+  it("does not let asynchronous telemetry block authentication responses", async () => {
+    const onEvent = vi.fn(() => new Promise<void>(() => {}));
+    const gate = makeGate({ onEvent });
+    const result = await Promise.race([
+      submitLogin(gate, "not the password"),
+      new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 100)),
+    ]);
+    expect(result).not.toBe("blocked");
+    expect(result).toBeInstanceOf(Response);
+    expect(onEvent).toHaveBeenCalledWith({ type: "login_failed", clientId: "untrusted-proxy" });
+
+    const failingGate = makeGate({
+      onEvent: () => Promise.reject(new Error("telemetry unavailable")),
+    });
+    expect((await submitLogin(failingGate, "not the password")).status).toBe(401);
+    await Promise.resolve();
+  });
+
   it("rejects forged, malformed, expired, and password-invalidated sessions", async () => {
     let now = Date.UTC(2026, 7, 11, 12);
     const gate = makeGate({ now: () => now, sessionDuration: 60 });
@@ -131,15 +149,38 @@ describe("request protection", () => {
     expect((await gate.handle(new Request(`${BASE_URL}/api/users`), blocked)).status).toBe(401);
   });
 
-  it("lets the configured login logo load while keeping other assets protected", async () => {
-    const gate = makeGate({ branding: { logo: "/brand/logo.svg?v=1" } });
-    const logo = await gate.handle(new Request(`${BASE_URL}/brand/logo.svg`), () =>
+  it("protects encoded variants of selectively protected routes", async () => {
+    const gate = makeGate({ protectedPaths: ["/admin"] });
+    for (const path of ["/%61dmin", "/%2561dmin", "/admin%2Fusers", "/admin%5Cusers"]) {
+      const response = await gate.handle(new Request(`${BASE_URL}${path}`), blocked);
+      expect(response.status).toBe(401);
+    }
+  });
+
+  it("does not grant exclusions to a different raw path representation", async () => {
+    const gate = makeGate({ excludedPaths: ["/public"] });
+    expect((await gate.handle(new Request(`${BASE_URL}/public`), blocked)).status).toBe(200);
+    expect((await gate.handle(new Request(`${BASE_URL}/%70ublic`), blocked)).status).toBe(401);
+  });
+
+  it("does not make a configured logo public without an explicit path exclusion", async () => {
+    const gate = makeGate({ branding: { logo: "/brand/logo.svg" } });
+    expect((await gate.handle(new Request(`${BASE_URL}/brand/logo.svg`), blocked)).status).toBe(
+      401,
+    );
+
+    const gateWithPublicLogo = makeGate({
+      branding: { logo: "/brand/logo.svg" },
+      excludedPaths: ["/brand/logo.svg"],
+    });
+    const logo = await gateWithPublicLogo.handle(new Request(`${BASE_URL}/brand/logo.svg`), () =>
       Promise.resolve(new Response("logo")),
     );
     expect(await logo.text()).toBe("logo");
-    expect((await gate.handle(new Request(`${BASE_URL}/brand/private.svg`), blocked)).status).toBe(
-      401,
-    );
+    expect(
+      (await gateWithPublicLogo.handle(new Request(`${BASE_URL}/brand/private.svg`), blocked))
+        .status,
+    ).toBe(401);
   });
 
   it("can secure immutable continuation responses without corrupting Vary star", async () => {

@@ -1,16 +1,17 @@
 # Sitegate
 
 Sitegate is a small, self-hosted password gate for staging, preview, client-review, and internal
-websites. It protects the request boundary—not merely the rendered frontend—so pages, APIs, route
+websites. It protects the request boundary, not merely the rendered frontend, so pages, APIs, route
 handlers, and direct HTTP requests all require a valid session.
 
 It has no database, hosted service, React UI, or Sitegate backend. Authentication runs inside your
 application using server-only configuration.
 
 > [!WARNING]
-> Sitegate is coarse-grained access protection for non-production environments. It is not a
-> replacement for user authentication, authorization, roles, audit trails, SSO, or access control
-> inside a multi-user production application.
+> Sitegate is coarse-grained access protection for previews, internal tools, and other sites shared
+> by one trusted group. It can run on production infrastructure, but it is not a replacement for
+> per-user authentication, authorization, roles, audit trails, SSO, or MFA in a multi-user
+> application.
 
 ## Why Sitegate?
 
@@ -140,7 +141,7 @@ export const proxy = sitegate({
   sessionDuration: 8 * 60 * 60,
   sameSite: "strict",
   secureCookies: "auto",
-  excludedPaths: ["/health"],
+  excludedPaths: ["/health", "/acme-logo.svg"],
   branding: {
     siteName: "Acme Preview",
     title: "Client review",
@@ -164,8 +165,8 @@ export const proxy = sitegate({
 | `secureCookies` | `"auto"` | Adds `Secure` for HTTPS. Set `true` when TLS is terminated before an HTTP origin and the request URL is not reconstructed as HTTPS. |
 | `sameSite` | `"strict"` | May be changed to `"lax"` when cross-site navigation continuity matters. |
 | `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Without a trusted client identity, the shared limit is `200`. Set `false` only when an equivalent outer control exists. |
-| `branding` | Sitegate defaults | Text, a root-relative logo, and a six-digit accent color. No raw HTML. The logo path is publicly readable so it can load before login. |
-| `onEvent` | none | Receives secret-free success/failure/limit/session/logout events. |
+| `branding` | Sitegate defaults | Text, a root-relative logo path without a query or hash, and a six-digit accent color. No raw HTML. Add the logo path to `excludedPaths` if it must load before login. |
+| `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events. |
 
 String path matchers respect boundaries: `/admin` matches `/admin` and `/admin/users`, but not
 `/administrator`.
