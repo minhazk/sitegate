@@ -164,7 +164,7 @@ export const proxy = sitegate({
 | `excludedPaths` | none | Always wins over `protectedPaths`; login/logout remain handled. |
 | `secureCookies` | `"auto"` | Adds `Secure` for HTTPS. Set `true` when TLS is terminated before an HTTP origin and the request URL is not reconstructed as HTTPS. |
 | `sameSite` | `"strict"` | May be changed to `"lax"` when cross-site navigation continuity matters. |
-| `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Without a trusted client identity, the shared limit is `200`. Set `false` only when an equivalent outer control exists. |
+| `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Successful logins are removed from both budgets. Recognized serverless runtimes require a shared `limiter`; set `false` only when an equivalent outer control exists. |
 | `branding` | Sitegate defaults | Text, a root-relative logo path without a query or hash, and a six-digit accent color. No raw HTML. Add the logo path to `excludedPaths` if it must load before login. |
 | `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events. |
 
@@ -206,11 +206,20 @@ logic.
 
 ## Rate limiting in serverless and multi-region deployments
 
-The default limiter is bounded to the current JavaScript process. It is useful on a single server
-and as a baseline on serverless instances, but it is not coordinated across processes, regions, or
-cold starts. For an internet-exposed preview on horizontally scaled infrastructure, pass a
-`LoginAttemptLimiter` backed by your existing shared store. Its `consume` operation must atomically
-admit and record each attempt. Also add rate limiting at the CDN/WAF.
+The default limiter is bounded to the current JavaScript process. It is suitable for a single
+server, but it is not coordinated across processes, regions, or cold starts. In recognized
+multi-instance runtimes—including AWS Lambda/SST, Vercel, Netlify, Google serverless runtimes, and
+Azure App Service/Functions—Sitegate refuses to start with the process-local default. Pass a
+`LoginAttemptLimiter` backed by your existing shared store with `scope: "shared"`, or set
+`rateLimit: false` only when an equivalent CDN/WAF control is enforced. Its `consume` operation must
+atomically reserve an attempt, and `reset` must clear that client's entries from client and global
+buckets after successful authentication.
+
+Runtime detection is a fail-safe for known platforms, not a substitute for deployment design. If a
+different platform can create multiple processes or isolates, configure the shared limiter or the
+external control explicitly. Successful logins clear their client's provisional entries from both
+the client and global budgets. An already-exhausted bucket still rejects every submission before
+password verification; otherwise rate limiting would not constrain password guessing.
 
 By default Sitegate does not trust `X-Forwarded-For`, so untrusted clients cannot rotate a spoofed
 header to evade the local limiter. Set `rateLimit.trustProxy: true` only when your platform strips

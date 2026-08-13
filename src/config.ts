@@ -24,6 +24,24 @@ export class SitegateConfigurationError extends Error {
   override readonly name = "SitegateConfigurationError";
 }
 
+function runsOnKnownMultiInstanceRuntime(): boolean {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  const environment = runtime.process?.env;
+  if (environment === undefined) return false;
+
+  return (
+    environment["AWS_LAMBDA_FUNCTION_NAME"] !== undefined ||
+    environment["AWS_EXECUTION_ENV"]?.startsWith("AWS_Lambda_") === true ||
+    environment["VERCEL"] === "1" ||
+    environment["NETLIFY"] === "true" ||
+    environment["FUNCTION_TARGET"] !== undefined ||
+    environment["K_SERVICE"] !== undefined ||
+    environment["WEBSITE_INSTANCE_ID"] !== undefined
+  );
+}
+
 function assertInternalPath(value: string, field: string): void {
   if (
     !value.startsWith("/") ||
@@ -97,6 +115,15 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
     if (!Number.isSafeInteger(windowSeconds) || windowSeconds < 1 || windowSeconds > 86_400) {
       throw new SitegateConfigurationError(
         "rateLimit.windowSeconds must be an integer from 1 to 86,400.",
+      );
+    }
+    if (
+      enabled &&
+      config.rateLimit?.limiter?.scope !== "shared" &&
+      runsOnKnownMultiInstanceRuntime()
+    ) {
+      throw new SitegateConfigurationError(
+        'Process-local rate limiting is unsafe in this serverless runtime. Configure rateLimit.limiter with a shared limiter whose scope is "shared", or set rateLimit to false only when equivalent rate limiting is enforced outside Sitegate.',
       );
     }
   }

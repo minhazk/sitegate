@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSitegate, SitegateConfigurationError } from "../src/index.js";
 import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("configuration", () => {
   it.each([
@@ -63,5 +67,45 @@ describe("configuration", () => {
       Promise.resolve(new Response("ok")),
     );
     expect(await response.text()).toBe("ok");
+  });
+
+  it("requires shared or external rate limiting in AWS Lambda", () => {
+    vi.stubEnv("AWS_LAMBDA_FUNCTION_NAME", "starla-production");
+
+    expect(() => createSitegate({ password: TEST_PASSWORD, secret: TEST_SECRET })).toThrow(
+      "shared limiter",
+    );
+
+    expect(() =>
+      createSitegate({
+        password: TEST_PASSWORD,
+        secret: TEST_SECRET,
+        rateLimit: {
+          limiter: {
+            scope: "shared",
+            consume: () => ({ limited: false }),
+            reset: () => {},
+          },
+        },
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      createSitegate({
+        password: TEST_PASSWORD,
+        secret: TEST_SECRET,
+        rateLimit: {
+          limiter: {
+            scope: "process",
+            consume: () => ({ limited: false }),
+            reset: () => {},
+          },
+        },
+      }),
+    ).toThrow('scope is "shared"');
+
+    expect(() =>
+      createSitegate({ password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: false }),
+    ).not.toThrow();
   });
 });

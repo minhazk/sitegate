@@ -16,7 +16,7 @@ describe("memory rate limiter", () => {
     expect(await limiter.consume("a", 60_001)).toEqual({ limited: false });
   });
 
-  it("resets only the successful client bucket", async () => {
+  it("can explicitly reset a client failure bucket", async () => {
     const limiter = createMemoryRateLimiter({
       maxAttempts: 1,
       globalMaxAttempts: 10,
@@ -25,6 +25,17 @@ describe("memory rate limiter", () => {
     await limiter.consume("a", 0);
     await limiter.reset("a");
     expect(await limiter.consume("a", 1)).toEqual({ limited: false });
+  });
+
+  it("removes a successful client's reservations from the global bucket", async () => {
+    const limiter = createMemoryRateLimiter({
+      maxAttempts: 1,
+      globalMaxAttempts: 1,
+      windowSeconds: 60,
+    });
+    expect(await limiter.consume("a", 0)).toEqual({ limited: false });
+    await limiter.reset("a");
+    expect(await limiter.consume("b", 1)).toEqual({ limited: false });
   });
 
   it("admits and records attempts atomically", async () => {
