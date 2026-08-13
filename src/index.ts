@@ -1,6 +1,6 @@
 export { SitegateConfigurationError } from "./config.js";
 export { createSitegate } from "./gate.js";
-export { isProtectedPath, safeDestination } from "./paths.js";
+export { canonicalPathname, isProtectedPath, safeDestination } from "./paths.js";
 export { createMemoryRateLimiter } from "./rate-limit.js";
 export type {
   LoginAttemptLimiter,

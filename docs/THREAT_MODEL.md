@@ -2,8 +2,8 @@
 
 ## Goal and security boundary
 
-Sitegate provides one coarse-grained, shared-password boundary around a non-production web
-application. The boundary is the server request interception layer. An unauthenticated request must
+Sitegate provides one coarse-grained, shared-password boundary around a site shared by one trusted
+group. The boundary is the server request interception layer. An unauthenticated request must
 not reach a protected page, API, handler, or asset even when the requester bypasses the UI and sends
 HTTP directly.
 
@@ -48,7 +48,7 @@ deployment account, and server environment are trusted.
 | Cookie theft from script | `HttpOnly`; `Secure` on HTTPS; host-only `__Host-` names; no `Domain`; `Path=/`. |
 | CSRF login/logout | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login token; state changes use POST. |
 | Open redirect | Only normalized root-relative paths without authorities, backslashes, whitespace, or controls are accepted. |
-| Brute force | Rolling per-client and global failure buckets; pluggable shared limiter; generic `429`. |
+| Brute force | Rolling per-client and global attempt buckets; pluggable shared limiter; generic `429`. |
 | Sensitive caching | `Cache-Control: private, no-store, max-age=0` and `Vary: Cookie` on all responses while enabled. |
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |

@@ -8,13 +8,12 @@ describe("memory rate limiter", () => {
       globalMaxAttempts: 3,
       windowSeconds: 60,
     });
-    await limiter.recordFailure("a", 0);
-    await limiter.recordFailure("a", 1);
-    expect(await limiter.check("a", 2)).toMatchObject({ limited: true, retryAfterSeconds: 60 });
-    expect(await limiter.check("b", 2)).toEqual({ limited: false });
-    await limiter.recordFailure("b", 2);
-    expect(await limiter.check("c", 3)).toMatchObject({ limited: true });
-    expect(await limiter.check("a", 60_001)).toEqual({ limited: false });
+    expect(await limiter.consume("a", 0)).toEqual({ limited: false });
+    expect(await limiter.consume("a", 1)).toEqual({ limited: false });
+    expect(await limiter.consume("a", 2)).toMatchObject({ limited: true, retryAfterSeconds: 60 });
+    expect(await limiter.consume("b", 2)).toEqual({ limited: false });
+    expect(await limiter.consume("c", 3)).toMatchObject({ limited: true });
+    expect(await limiter.consume("a", 60_001)).toEqual({ limited: false });
   });
 
   it("resets only the successful client bucket", async () => {
@@ -23,8 +22,21 @@ describe("memory rate limiter", () => {
       globalMaxAttempts: 10,
       windowSeconds: 60,
     });
-    await limiter.recordFailure("a", 0);
+    await limiter.consume("a", 0);
     await limiter.reset("a");
-    expect(await limiter.check("a", 1)).toEqual({ limited: false });
+    expect(await limiter.consume("a", 1)).toEqual({ limited: false });
+  });
+
+  it("admits and records attempts atomically", async () => {
+    const limiter = createMemoryRateLimiter({
+      maxAttempts: 2,
+      globalMaxAttempts: 20,
+      windowSeconds: 60,
+    });
+    const decisions = await Promise.all(
+      Array.from({ length: 20 }, () => limiter.consume("a", Date.now())),
+    );
+    expect(decisions.filter((decision) => !decision.limited)).toHaveLength(2);
+    expect(decisions.filter((decision) => decision.limited)).toHaveLength(18);
   });
 });

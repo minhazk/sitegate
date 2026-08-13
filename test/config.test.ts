@@ -15,6 +15,10 @@ describe("configuration", () => {
     ],
     [{ password: TEST_PASSWORD, secret: TEST_SECRET, loginPath: "login" }, "loginPath"],
     [
+      { password: TEST_PASSWORD, secret: TEST_SECRET, loginPath: "/%5Fsitegate/login" },
+      "loginPath",
+    ],
+    [
       { password: TEST_PASSWORD, secret: TEST_SECRET, sessionDuration: 31 * 24 * 60 * 60 },
       "sessionDuration",
     ],
@@ -24,6 +28,12 @@ describe("configuration", () => {
     ],
     [
       { password: TEST_PASSWORD, secret: TEST_SECRET, branding: { logo: "https://evil.test/x" } },
+      "logo",
+    ],
+    [{ password: TEST_PASSWORD, secret: TEST_SECRET, branding: { logo: "/private?x=1" } }, "logo"],
+    [{ password: TEST_PASSWORD, secret: TEST_SECRET, branding: { logo: "/private#logo" } }, "logo"],
+    [
+      { password: TEST_PASSWORD, secret: TEST_SECRET, branding: { logo: "/brand/%6cogo.svg" } },
       "logo",
     ],
     [

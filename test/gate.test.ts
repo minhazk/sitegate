@@ -81,6 +81,24 @@ describe("request protection", () => {
     expect(onEvent).toHaveBeenCalledWith({ type: "login_failed", clientId: "untrusted-proxy" });
   });
 
+  it("does not let asynchronous telemetry block authentication responses", async () => {
+    const onEvent = vi.fn(() => new Promise<void>(() => {}));
+    const gate = makeGate({ onEvent });
+    const result = await Promise.race([
+      submitLogin(gate, "not the password"),
+      new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 100)),
+    ]);
+    expect(result).not.toBe("blocked");
+    expect(result).toBeInstanceOf(Response);
+    expect(onEvent).toHaveBeenCalledWith({ type: "login_failed", clientId: "untrusted-proxy" });
+
+    const failingGate = makeGate({
+      onEvent: () => Promise.reject(new Error("telemetry unavailable")),
+    });
+    expect((await submitLogin(failingGate, "not the password")).status).toBe(401);
+    await Promise.resolve();
+  });
+
   it("rejects forged, malformed, expired, and password-invalidated sessions", async () => {
     let now = Date.UTC(2026, 7, 11, 12);
     const gate = makeGate({ now: () => now, sessionDuration: 60 });
@@ -131,15 +149,38 @@ describe("request protection", () => {
     expect((await gate.handle(new Request(`${BASE_URL}/api/users`), blocked)).status).toBe(401);
   });
 
-  it("lets the configured login logo load while keeping other assets protected", async () => {
-    const gate = makeGate({ branding: { logo: "/brand/logo.svg?v=1" } });
-    const logo = await gate.handle(new Request(`${BASE_URL}/brand/logo.svg`), () =>
+  it("protects encoded variants of selectively protected routes", async () => {
+    const gate = makeGate({ protectedPaths: ["/admin"] });
+    for (const path of ["/%61dmin", "/%2561dmin", "/admin%2Fusers", "/admin%5Cusers"]) {
+      const response = await gate.handle(new Request(`${BASE_URL}${path}`), blocked);
+      expect(response.status).toBe(401);
+    }
+  });
+
+  it("does not grant exclusions to a different raw path representation", async () => {
+    const gate = makeGate({ excludedPaths: ["/public"] });
+    expect((await gate.handle(new Request(`${BASE_URL}/public`), blocked)).status).toBe(200);
+    expect((await gate.handle(new Request(`${BASE_URL}/%70ublic`), blocked)).status).toBe(401);
+  });
+
+  it("does not make a configured logo public without an explicit path exclusion", async () => {
+    const gate = makeGate({ branding: { logo: "/brand/logo.svg" } });
+    expect((await gate.handle(new Request(`${BASE_URL}/brand/logo.svg`), blocked)).status).toBe(
+      401,
+    );
+
+    const gateWithPublicLogo = makeGate({
+      branding: { logo: "/brand/logo.svg" },
+      excludedPaths: ["/brand/logo.svg"],
+    });
+    const logo = await gateWithPublicLogo.handle(new Request(`${BASE_URL}/brand/logo.svg`), () =>
       Promise.resolve(new Response("logo")),
     );
     expect(await logo.text()).toBe("logo");
-    expect((await gate.handle(new Request(`${BASE_URL}/brand/private.svg`), blocked)).status).toBe(
-      401,
-    );
+    expect(
+      (await gateWithPublicLogo.handle(new Request(`${BASE_URL}/brand/private.svg`), blocked))
+        .status,
+    ).toBe(401);
   });
 
   it("can secure immutable continuation responses without corrupting Vary star", async () => {
@@ -191,6 +232,17 @@ describe("login and logout security", () => {
     expect(limited.headers.get("retry-after")).toBeTruthy();
   });
 
+  it("does not admit concurrent attempts beyond the configured limit", async () => {
+    const gate = makeGate({
+      rateLimit: { maxAttempts: 2, globalMaxAttempts: 20, windowSeconds: 60 },
+    });
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, (_, index) => submitLogin(gate, `wrong password ${index}`)),
+    );
+    expect(responses.filter((response) => response.status === 401)).toHaveLength(2);
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(8);
+  });
+
   it("invalidates the browser cookie on same-origin POST logout", async () => {
     const gate = makeGate();
     const response = await gate.handle(
@@ -228,6 +280,31 @@ describe("login and logout security", () => {
       blocked,
     );
     expect(oversized.status).toBe(413);
+
+    let cancelled = false;
+    const streamedBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4096));
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const streamed = await gate.handle(
+      new Request(`${BASE_URL}${gate.loginPath}`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: streamedBody,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+      blocked,
+    );
+    expect(streamed.status).toBe(413);
+    expect(cancelled).toBe(true);
   });
 
   it("never redirects to an external origin after login", async () => {

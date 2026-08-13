@@ -13,14 +13,57 @@ function matches(pathname: string, matcher: PathMatcher): boolean {
   return matcher(pathname);
 }
 
+export function canonicalPathname(pathname: string): string | undefined {
+  let canonical = pathname;
+  for (let pass = 0; pass < 4; pass += 1) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(canonical);
+    } catch {
+      return undefined;
+    }
+    if (decoded === canonical) break;
+    canonical = decoded;
+  }
+
+  const hasControlCharacter = Array.from(canonical).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+  if (
+    /%[0-9a-f]{2}/iu.test(canonical) ||
+    canonical.startsWith("//") ||
+    canonical.includes("\\") ||
+    canonical.includes("?") ||
+    canonical.includes("#") ||
+    hasControlCharacter
+  ) {
+    return undefined;
+  }
+  try {
+    const base = new URL("https://sitegate.invalid");
+    const normalized = new URL(canonical, base);
+    if (normalized.origin !== base.origin) return undefined;
+    return normalized.pathname;
+  } catch {
+    return undefined;
+  }
+}
+
 export function isProtectedPath(
   pathname: string,
   protectedPaths: readonly PathMatcher[] | undefined,
   excludedPaths: readonly PathMatcher[],
 ): boolean {
-  if (excludedPaths.some((matcher) => matches(pathname, matcher))) return false;
+  const canonical = canonicalPathname(pathname);
+  if (canonical === undefined) return true;
+  const variants = canonical === pathname ? [pathname] : [pathname, canonical];
+  if (excludedPaths.some((matcher) => variants.every((variant) => matches(variant, matcher)))) {
+    return false;
+  }
   return (
-    protectedPaths === undefined || protectedPaths.some((matcher) => matches(pathname, matcher))
+    protectedPaths === undefined ||
+    protectedPaths.some((matcher) => variants.some((variant) => matches(variant, matcher)))
   );
 }
 

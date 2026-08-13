@@ -1,13 +1,47 @@
 import { cookieNames, expireCookie, readCookie, serializeCookie } from "./cookies.js";
 import { resolveConfig } from "./config.js";
 import { createCryptoService } from "./crypto.js";
-import { isProtectedPath, safeDestination } from "./paths.js";
+import { canonicalPathname, isProtectedPath, safeDestination } from "./paths.js";
 import { createMemoryRateLimiter, defaultClientId } from "./rate-limit.js";
 import { jsonError, redirect, secureResponse } from "./response.js";
 import type { LoginAttemptLimiter, Sitegate, SitegateConfig, SitegateEvent } from "./types.js";
 import { loginPage } from "./ui.js";
 
 const MAX_LOGIN_BODY_BYTES = 4096;
+
+async function readLoginBody(request: Request): Promise<string | undefined> {
+  const reader = request.body?.getReader();
+  if (reader === undefined) return "";
+
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_LOGIN_BODY_BYTES) {
+        try {
+          await reader.cancel("Login request is too large.");
+        } catch {
+          // The size limit is already enforced even if the runtime cannot cancel the source.
+        }
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
 
 function appendSetCookie(response: Response, value: string): void {
   response.headers.append("Set-Cookie", value);
@@ -36,9 +70,10 @@ function sameOrigin(request: Request): boolean {
   }
 }
 
-async function emit(handler: SitegateConfig["onEvent"], event: SitegateEvent): Promise<void> {
+function emit(handler: SitegateConfig["onEvent"], event: SitegateEvent): void {
+  if (handler === undefined) return;
   try {
-    await handler?.(event);
+    void Promise.resolve(handler(event)).catch(() => {});
   } catch {
     // Security behavior must not depend on telemetry availability.
   }
@@ -76,7 +111,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     const token = readCookie(request, names.session);
     if (token === undefined || token.length > 4096) return false;
     const valid = await cryptoService.verifySession(token, config.now());
-    if (!valid) await emit(config.onEvent, { type: "invalid_session" });
+    if (!valid) emit(config.onEvent, { type: "invalid_session" });
     return valid;
   }
 
@@ -122,10 +157,15 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     }
     const contentLength = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(contentLength) && contentLength > MAX_LOGIN_BODY_BYTES) {
+      try {
+        await request.body?.cancel("Login request is too large.");
+      } catch {
+        // The declared-size rejection does not depend on cancellation support.
+      }
       return jsonError("Login request is too large.", 413);
     }
-    const body = await request.text();
-    if (new TextEncoder().encode(body).byteLength > MAX_LOGIN_BODY_BYTES) {
+    const body = await readLoginBody(request);
+    if (body === undefined) {
       return jsonError("Login request is too large.", 413);
     }
     const form = new URLSearchParams(body);
@@ -147,9 +187,9 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     }
 
     const clientId = await getClientId(request);
-    const limit = await limiter?.check(clientId, config.now());
+    const limit = await limiter?.consume(clientId, config.now());
     if (limit?.limited === true) {
-      await emit(config.onEvent, { type: "login_rate_limited", clientId });
+      emit(config.onEvent, { type: "login_rate_limited", clientId });
       const response = await renderLogin(
         request,
         submittedDestination,
@@ -164,13 +204,12 @@ export function createSitegate(input: SitegateConfig): Sitegate {
 
     const password = form.get("password") ?? "";
     if (password.length > 1024 || !(await cryptoService.verifyPassword(password))) {
-      await limiter?.recordFailure(clientId, config.now());
-      await emit(config.onEvent, { type: "login_failed", clientId });
+      emit(config.onEvent, { type: "login_failed", clientId });
       return renderLogin(request, submittedDestination, "That password is not correct.");
     }
 
     await limiter?.reset(clientId);
-    await emit(config.onEvent, { type: "login_succeeded", clientId });
+    emit(config.onEvent, { type: "login_succeeded", clientId });
     const response = redirect(submittedDestination);
     appendSetCookie(
       response,
@@ -195,7 +234,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     const response = redirect(config.loginPath);
     appendSetCookie(response, expireCookie(names.session, names.secure, config.sameSite));
     appendSetCookie(response, expireCookie(names.csrf, names.secure, config.sameSite));
-    await emit(config.onEvent, { type: "logout" });
+    emit(config.onEvent, { type: "logout" });
     return response;
   }
 
@@ -205,10 +244,12 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     isAuthenticated,
     async handle(request, next) {
       if (!config.enabled) return next();
-      const pathname = new URL(request.url).pathname;
+      const rawPathname = new URL(request.url).pathname;
+      const pathname = canonicalPathname(rawPathname);
+      if (pathname === undefined) return jsonError("Authentication required.", 401);
       if (pathname === config.loginPath) return handleLogin(request);
       if (pathname === config.logoutPath) return handleLogout(request);
-      if (!isProtectedPath(pathname, config.protectedPaths, config.excludedPaths)) {
+      if (!isProtectedPath(rawPathname, config.protectedPaths, config.excludedPaths)) {
         return secureResponse(await next());
       }
       if (await isAuthenticated(request)) return secureResponse(await next());
