@@ -15,11 +15,15 @@ describe("release workflow", () => {
     expect(workflow).toContain("github.event.release.tag_name");
     expect(workflow).toContain('test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"');
     expect(workflow).toContain('test "$RELEASE_TAG" = "v$PACKAGE_VERSION"');
-    expect(workflow).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$TAG_SHA"');
+    expect(workflow).toContain('git merge-base --is-ancestor "$TAG_SHA" origin/main');
     expect(packageJson.version).toMatch(/^\d+\.\d+\.\d+$/u);
   });
 
-  it("does not bypass publish-time Git checks", () => {
+  it("attaches the verified tag commit to main for publish-time Git checks", () => {
+    expect(workflow).toContain('git switch --force-create main "$TAG_SHA"');
+    expect(workflow).toContain('test "$(git branch --show-current)" = "main"');
+    expect(workflow).toContain('test -z "$(git status --porcelain)"');
     expect(workflow).not.toContain("--no-git-checks");
   });
 });
