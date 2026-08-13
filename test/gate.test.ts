@@ -223,13 +223,22 @@ describe("login and logout security", () => {
 
   it("rate limits repeated failures before rechecking the password", async () => {
     const gate = makeGate({
-      rateLimit: { maxAttempts: 2, globalMaxAttempts: 20, windowSeconds: 60 },
+      rateLimit: { maxAttempts: 2, globalMaxAttempts: 2, windowSeconds: 60 },
     });
     expect((await submitLogin(gate, "wrong password 1")).status).toBe(401);
     expect((await submitLogin(gate, "wrong password 2")).status).toBe(401);
     const limited = await submitLogin(gate, TEST_PASSWORD);
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("does not count successful logins against the global failure budget", async () => {
+    const gate = makeGate({
+      rateLimit: { maxAttempts: 2, globalMaxAttempts: 2, windowSeconds: 60 },
+    });
+    expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
+    expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
+    expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
   });
 
   it("does not admit concurrent attempts beyond the configured limit", async () => {

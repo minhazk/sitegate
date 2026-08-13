@@ -8,8 +8,9 @@ interface MemoryRateLimiterOptions {
 
 export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): LoginAttemptLimiter {
   const attempts = new Map<string, number[]>();
+  let globalAttempts: Array<{ clientKey: string; timestamp: number }> = [];
   const windowMs = options.windowSeconds * 1000;
-  const maxBuckets = 10_001;
+  const maxBuckets = 10_000;
   let attemptsRecorded = 0;
 
   function clientKey(clientId: string): string {
@@ -37,15 +38,20 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
 
   function cleanAll(now: number): void {
     for (const key of attempts.keys()) recent(key, now);
+    const cutoff = now - windowMs;
+    globalAttempts = globalAttempts.filter(({ timestamp }) => timestamp > cutoff);
   }
 
   return {
+    scope: "process",
     consume(clientId, now) {
       attemptsRecorded += 1;
       if (attemptsRecorded % 128 === 0) cleanAll(now);
       const key = clientKey(clientId);
       const clientValues = recent(key, now);
-      const globalValues = recent("global", now);
+      const cutoff = now - windowMs;
+      globalAttempts = globalAttempts.filter(({ timestamp }) => timestamp > cutoff);
+      const globalValues = globalAttempts.map(({ timestamp }) => timestamp);
       const client = decision(clientValues, options.maxAttempts, now);
       const global = decision(globalValues, options.globalMaxAttempts, now);
       if (client.limited || global.limited) {
@@ -55,11 +61,13 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
         };
       }
       attempts.set(key, [...clientValues, now]);
-      attempts.set("global", [...globalValues, now]);
+      globalAttempts.push({ clientKey: key, timestamp: now });
       return { limited: false };
     },
     reset(clientId) {
-      attempts.delete(clientKey(clientId));
+      const key = clientKey(clientId);
+      attempts.delete(key);
+      globalAttempts = globalAttempts.filter(({ clientKey: recordedKey }) => recordedKey !== key);
     },
   };
 }

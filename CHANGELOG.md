@@ -6,6 +6,18 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-13
+
+### Security
+
+- Clear a successful client's provisional entries from both per-client and global attempt budgets,
+  so repeated successful authentication cannot exhaust the global bucket.
+- Refuse the process-local limiter in recognized multi-instance serverless runtimes, including AWS
+  Lambda, unless the application supplies a limiter explicitly marked `scope: "shared"` or relies
+  on equivalent external rate limiting.
+- Retain canonical matching across raw and decoded path representations for selective
+  `protectedPaths` policies.
+
 ## [0.1.1] - 2026-08-13
 
 ### Security
@@ -43,6 +55,7 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/minhazk/sitegate/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/minhazk/sitegate/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/minhazk/sitegate/releases/tag/v0.1.0

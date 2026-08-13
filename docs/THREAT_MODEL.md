@@ -48,7 +48,7 @@ deployment account, and server environment are trusted.
 | Cookie theft from script | `HttpOnly`; `Secure` on HTTPS; host-only `__Host-` names; no `Domain`; `Path=/`. |
 | CSRF login/logout | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login token; state changes use POST. |
 | Open redirect | Only normalized root-relative paths without authorities, backslashes, whitespace, or controls are accepted. |
-| Brute force | Rolling per-client and global attempt buckets; pluggable shared limiter; generic `429`. |
+| Brute force | Rolling per-client and global attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
 | Sensitive caching | `Cache-Control: private, no-store, max-age=0` and `Vary: Cookie` on all responses while enabled. |
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
@@ -60,8 +60,9 @@ deployment account, and server environment are trusted.
 - A copied session is a bearer token. Logout clears browser state but cannot revoke that copy without
   a database. Password or secret rotation revokes all tokens.
 - Stateless sessions enforce an absolute timeout, not an idle timeout.
-- The default in-memory limiter is neither durable nor globally coordinated. Scaled deployments
-  need the pluggable limiter and/or an edge rate limit.
+- The default in-memory limiter is neither durable nor globally coordinated. Recognized serverless
+  runtimes reject it; other scaled deployments must configure the shared limiter or an equivalent
+  edge rate limit explicitly.
 - A distributed attacker can still consume login capacity or attempt guesses across many instances.
 - Application XSS can perform same-origin actions using the victim's browser even though it cannot
   read an `HttpOnly` cookie.

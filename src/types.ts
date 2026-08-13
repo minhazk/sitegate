@@ -21,19 +21,22 @@ export interface RateLimitDecision {
  * application runs in multiple regions or processes.
  */
 export interface LoginAttemptLimiter {
-  /** Atomically admit and record one login attempt. */
+  /** Storage scope. Set `shared` only when all application instances coordinate this limiter. */
+  readonly scope?: "process" | "shared";
+  /** Atomically admit and provisionally record one login attempt. */
   consume(clientId: string, now: number): MaybePromise<RateLimitDecision>;
+  /** Clear this client's entries from every relevant bucket after successful authentication. */
   reset(clientId: string): MaybePromise<void>;
 }
 
 export interface RateLimitOptions {
-  /** Attempts allowed per client. Default: 10 with a trusted client ID, otherwise global max. */
+  /** Attempts allowed per client. Successful attempts are cleared. */
   maxAttempts?: number;
-  /** Attempts allowed globally in the rolling window. Default: 200. */
+  /** Attempts allowed globally. Successful attempts are cleared. Default: 200. */
   globalMaxAttempts?: number;
   /** Rolling-window duration in seconds. Default: 900 (15 minutes). */
   windowSeconds?: number;
-  /** Use a deployment-specific shared limiter instead of the process-local default. */
+  /** Use a deployment-specific shared limiter. Required in recognized serverless runtimes. */
   limiter?: LoginAttemptLimiter;
   /** Derive a non-sensitive client key. Do not return raw secrets or cookie values. */
   getClientId?: (request: Request) => MaybePromise<string>;
