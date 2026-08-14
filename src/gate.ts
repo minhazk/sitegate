@@ -178,12 +178,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       csrfToken === null ||
       !(await cryptoService.verifyCsrf(csrfToken, csrfCookie, config.now()))
     ) {
-      return renderLogin(
-        request,
-        submittedDestination,
-        "Login form expired. Reload the page and try again.",
-        403,
-      );
+      return renderLogin(request, submittedDestination, config.strings.expiredForm, 403);
     }
 
     const clientId = await getClientId(request);
@@ -193,7 +188,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       const response = await renderLogin(
         request,
         submittedDestination,
-        "Too many login attempts. Try again later.",
+        config.strings.rateLimited,
         429,
       );
       if (limit.retryAfterSeconds !== undefined) {
@@ -205,7 +200,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     const password = form.get("password") ?? "";
     if (password.length > 1024 || !(await cryptoService.verifyPassword(password))) {
       emit(config.onEvent, { type: "login_failed", clientId });
-      return renderLogin(request, submittedDestination, "That password is not correct.");
+      return renderLogin(request, submittedDestination, config.strings.incorrectPassword);
     }
 
     await limiter?.reset(clientId);

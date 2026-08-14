@@ -37,6 +37,10 @@ pnpm add sitegate
 Sitegate requires Node.js 24 LTS. Its optional framework peers support Next.js 14.2–16 and
 Vite 6–8.
 
+`jose` is Sitegate's only direct runtime dependency. `next` and `vite` are optional peer
+dependencies supplied by the consuming application; package-manager audits may still display them
+in paths beneath Sitegate because peers participate in the host's resolved dependency graph.
+
 ## Minimal Next.js setup
 
 Add server-only variables to the deployment environment:
@@ -87,7 +91,28 @@ props.
 | 16 | 16.2.12 | `proxy.ts` / `proxy` | Node.js |
 
 Each line is checked in an isolated TypeScript consumer and runtime smoke test. Use the latest
-security patch within your chosen Next.js line.
+security patch within your chosen Next.js line. Next.js 15 and 16 are the current upstream LTS
+lines; Next.js 14 remains compatibility-tested here but is no longer covered by the upstream
+[support policy](https://nextjs.org/support-policy). The July 2026 security release requires at
+least 15.5.21 or 16.2.11; Sitegate tests newer patches from both lines. Keep the host framework
+patched because Sitegate relies on its Proxy/Middleware boundary executing correctly.
+
+### Required matcher
+
+Use the broad matcher unless a narrower policy has been deliberately reviewed:
+
+```ts
+export const config = {
+  matcher: ["/:path*"],
+};
+```
+
+This sends pages, route handlers, direct API calls, and framework-served assets through the gate,
+including Sitegate's own login and logout endpoints. `excludedPaths` lets the gate pass an explicit
+public route through after interception. Do not exclude `_next`, API, image, download, or static
+paths merely for convenience if any response can contain private staging content. Test the exact
+deployed matcher because Sitegate cannot protect requests that Next.js or the hosting adapter routes
+around Proxy/Middleware.
 
 ## Enable only for previews
 
@@ -107,6 +132,32 @@ export const config = { matcher: ["/:path*"] };
 When `enabled` is `false`, password and secret configuration is not required and the request passes
 through unchanged. Do not accidentally disable Sitegate on an environment that is intended to be
 private.
+
+## Compose with an existing Next.js Proxy or Middleware
+
+`createSitegateNext` can continue into an existing handler after Sitegate grants access:
+
+```ts
+import { createSitegateNext } from "sitegate/next";
+import { existingProxy } from "./src/auth/existing-proxy";
+
+export const proxy = createSitegateNext(
+  { rateLimit: false },
+  { next: (request) => existingProxy(request) },
+);
+
+export const config = { matcher: ["/:path*"] };
+```
+
+The continuation may return a `Response` synchronously or asynchronously and can refresh
+authentication, mutate request/response headers, redirect, rewrite, or call `NextResponse.next()`.
+It is called only when Sitegate is disabled, the path is explicitly public, or the request has a
+valid Sitegate session. The default remains `NextResponse.next()`.
+
+The Next.js adapter emits absolute `Location` headers for unauthenticated, successful-login, and
+logout redirects. This preserves compatibility with OpenNext/SST hosts that reject relative
+redirect locations. The framework-neutral core continues to use valid Fetch API relative
+locations.
 
 ## Vite development and local preview
 
@@ -150,6 +201,15 @@ export const proxy = sitegate({
     logo: "/acme-logo.svg",
     accentColor: "#635bff",
   },
+  strings: {
+    language: "en-GB",
+    passwordLabel: "Password",
+    submitLabel: "Continue",
+    footerText: "Internal staging environment",
+    incorrectPassword: "That password is not correct.",
+    expiredForm: "Login form expired. Reload the page and try again.",
+    rateLimited: "Too many login attempts. Try again later.",
+  },
 });
 ```
 
@@ -167,6 +227,7 @@ export const proxy = sitegate({
 | `sameSite` | `"strict"` | May be changed to `"lax"` when cross-site navigation continuity matters. |
 | `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Successful logins are removed from both budgets. Set `false` for zero-infrastructure mode, or pass your own `limiter`. |
 | `branding` | Sitegate defaults | Text, a root-relative logo path without a query or hash, and a six-digit accent color. No raw HTML. Add the logo path to `excludedPaths` if it must load before login. |
+| `strings` | English defaults | HTML language, field/button/footer labels, and escaped incorrect-password, expired-form, and rate-limit messages. |
 | `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events. |
 
 String path matchers respect boundaries: `/admin` matches `/admin` and `/admin/users`, but not
@@ -262,6 +323,9 @@ Sitegate deliberately does not choose or bundle a DynamoDB, Redis, or provider-s
 implementation. For example, an SST application can pass its own shared atomic limiter, enforce an
 equivalent rule at its edge, or explicitly use `rateLimit: false` without adding infrastructure.
 
+See the [SST/OpenNext deployment example](docs/SST_OPENNEXT.md) for stage propagation, matcher,
+composition, and live verification guidance.
+
 By default Sitegate does not trust `X-Forwarded-For`, so untrusted clients cannot rotate a spoofed
 header to evade the local limiter. Set `rateLimit.trustProxy: true` only when your platform strips
 incoming forwarding headers and writes a trustworthy client address. Custom client identifiers are
@@ -317,6 +381,8 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
    bypass URLs where possible.
 7. Verify `Set-Cookie`, `Cache-Control`, `Vary`, and `X-Robots-Tag` on the deployed response.
 8. Keep authorization inside the application wherever users have different permissions.
+9. Keep Next.js/OpenNext/SST patched and rerun unauthenticated page, API, login, and logout checks
+   after framework or adapter upgrades.
 
 ## Troubleshooting
 

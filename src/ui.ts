@@ -23,7 +23,7 @@ interface LoginPageOptions {
 }
 
 export function loginPage(options: LoginPageOptions): Response {
-  const { branding, loginPath } = options.config;
+  const { branding, loginPath, strings } = options.config;
   const logo =
     branding.logo === undefined
       ? `<div class="mark" aria-hidden="true">S</div>`
@@ -33,7 +33,7 @@ export function loginPage(options: LoginPageOptions): Response {
       ? ""
       : `<div class="error" role="alert">${escapeHtml(options.error)}</div>`;
   const html = `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(strings.language)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -80,12 +80,12 @@ export function loginPage(options: LoginPageOptions): Response {
       <form action="${escapeHtml(loginPath)}" method="post">
         <input type="hidden" name="csrf" value="${escapeHtml(options.csrfToken)}" />
         <input type="hidden" name="next" value="${escapeHtml(options.destination)}" />
-        <label for="sitegate-password">Password</label>
+        <label for="sitegate-password">${escapeHtml(strings.passwordLabel)}</label>
         <input id="sitegate-password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="1024" />
-        <button type="submit">Continue</button>
+        <button type="submit">${escapeHtml(strings.submitLabel)}</button>
       </form>
     </section>
-    <p class="foot">Protected by Sitegate</p>
+    <p class="foot">${escapeHtml(strings.footerText)}</p>
   </main>
 </body>
 </html>`;

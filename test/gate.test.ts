@@ -50,6 +50,58 @@ describe("request protection", () => {
     expect(html).not.toContain("<script");
   });
 
+  it("customizes and escapes the built-in page strings", async () => {
+    const gate = makeGate({
+      branding: {
+        siteName: "Starla",
+        title: "Staging access",
+        description: "Internal staging environment",
+        logo: "/logo.svg",
+        accentColor: "#123456",
+      },
+      strings: {
+        language: "de",
+        passwordLabel: "Passwort <intern>",
+        submitLabel: "Weiter & anmelden",
+        footerText: "Nur für das Team",
+        incorrectPassword: "Falsches Passwort <b>falsch</b>",
+        expiredForm: "Formular abgelaufen",
+        rateLimited: "Zu viele Versuche",
+      },
+    });
+    const { response } = await loginForm(gate);
+    const html = await response.text();
+
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain("Passwort &lt;intern&gt;");
+    expect(html).toContain("Weiter &amp; anmelden");
+    expect(html).toContain("Nur für das Team");
+    expect(html).toContain("/logo.svg");
+    expect(html).toContain("#123456");
+    expect(html).not.toContain("<intern>");
+
+    const wrong = await submitLogin(gate, "not the password");
+    const wrongHtml = await wrong.text();
+    expect(wrongHtml).toContain("Falsches Passwort &lt;b&gt;falsch&lt;/b&gt;");
+    expect(wrongHtml).not.toContain("<b>falsch</b>");
+
+    const form = await loginForm(gate);
+    const expired = await submitLogin(gate, TEST_PASSWORD, "/", {
+      ...form,
+      token: `${form.token}x`,
+    });
+    expect(await expired.text()).toContain("Formular abgelaufen");
+
+    const limitedGate = makeGate({
+      rateLimit: { maxAttempts: 1, globalMaxAttempts: 1 },
+      strings: { rateLimited: "Zu viele Versuche" },
+    });
+    expect((await submitLogin(limitedGate, "not the password")).status).toBe(401);
+    const limited = await submitLogin(limitedGate, TEST_PASSWORD);
+    expect(limited.status).toBe(429);
+    expect(await limited.text()).toContain("Zu viele Versuche");
+  });
+
   it("authenticates server-side and lets the session access pages and APIs", async () => {
     const gate = makeGate();
     const login = await submitLogin(gate, TEST_PASSWORD, "/reports?month=8");

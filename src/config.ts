@@ -1,4 +1,10 @@
-import type { PathMatcher, SitegateBranding, SitegateConfig, SitegateSameSite } from "./types.js";
+import type {
+  PathMatcher,
+  SitegateBranding,
+  SitegateConfig,
+  SitegateSameSite,
+  SitegateStrings,
+} from "./types.js";
 import { canonicalPathname } from "./paths.js";
 
 export interface ResolvedConfig {
@@ -14,11 +20,21 @@ export interface ResolvedConfig {
   sameSite: SitegateSameSite;
   rateLimit: SitegateConfig["rateLimit"];
   branding: Required<Omit<SitegateBranding, "logo">> & Pick<SitegateBranding, "logo">;
+  strings: Required<SitegateStrings>;
   onEvent: SitegateConfig["onEvent"];
   now: () => number;
 }
 
 const DEFAULT_DESCRIPTION = "Enter the shared password to continue.";
+const DEFAULT_STRINGS: Required<SitegateStrings> = {
+  language: "en",
+  passwordLabel: "Password",
+  submitLabel: "Continue",
+  footerText: "Protected by Sitegate",
+  incorrectPassword: "That password is not correct.",
+  expiredForm: "Login form expired. Reload the page and try again.",
+  rateLimited: "Too many login attempts. Try again later.",
+};
 
 export class SitegateConfigurationError extends Error {
   override readonly name = "SitegateConfigurationError";
@@ -146,6 +162,12 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
       "branding.logo must be a root-relative path without a query or hash.",
     );
   }
+  const language = config.strings?.language ?? DEFAULT_STRINGS.language;
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/iu.test(language) || language.length > 35) {
+    throw new SitegateConfigurationError(
+      "strings.language must be a valid language tag such as en, de, or en-GB.",
+    );
+  }
   return {
     password: config.password,
     secret: config.secret,
@@ -164,6 +186,15 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
       description: config.branding?.description ?? DEFAULT_DESCRIPTION,
       ...(logo === undefined ? {} : { logo }),
       accentColor,
+    },
+    strings: {
+      language,
+      passwordLabel: config.strings?.passwordLabel ?? DEFAULT_STRINGS.passwordLabel,
+      submitLabel: config.strings?.submitLabel ?? DEFAULT_STRINGS.submitLabel,
+      footerText: config.strings?.footerText ?? DEFAULT_STRINGS.footerText,
+      incorrectPassword: config.strings?.incorrectPassword ?? DEFAULT_STRINGS.incorrectPassword,
+      expiredForm: config.strings?.expiredForm ?? DEFAULT_STRINGS.expiredForm,
+      rateLimited: config.strings?.rateLimited ?? DEFAULT_STRINGS.rateLimited,
     },
     onEvent: config.onEvent,
     now: config.now ?? Date.now,
