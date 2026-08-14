@@ -13,4 +13,5 @@ export type {
   SitegateConfig,
   SitegateEvent,
   SitegateSameSite,
+  SitegateStrings,
 } from "./types.js";

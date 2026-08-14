@@ -41,6 +41,10 @@ describe("configuration", () => {
       "logo",
     ],
     [
+      { password: TEST_PASSWORD, secret: TEST_SECRET, strings: { language: "not a locale!" } },
+      "strings.language",
+    ],
+    [
       { password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: { maxAttempts: 0 } },
       "rateLimit.maxAttempts",
     ],

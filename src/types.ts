@@ -57,6 +57,23 @@ export interface SitegateBranding {
   accentColor?: string;
 }
 
+export interface SitegateStrings {
+  /** HTML language tag for the built-in page. Default: `en`. */
+  language?: string;
+  /** Password-field label. Default: `Password`. */
+  passwordLabel?: string;
+  /** Submit-button label. Default: `Continue`. */
+  submitLabel?: string;
+  /** Footer text. Default: `Protected by Sitegate`. */
+  footerText?: string;
+  /** Incorrect-password message. */
+  incorrectPassword?: string;
+  /** Expired or invalid login-form message. */
+  expiredForm?: string;
+  /** Rate-limit message. */
+  rateLimited?: string;
+}
+
 export interface SitegateConfig {
   /** Shared password. Must contain at least 12 Unicode characters when enabled. */
   password: string;
@@ -84,6 +101,8 @@ export interface SitegateConfig {
    */
   rateLimit?: false | RateLimitOptions;
   branding?: SitegateBranding;
+  /** Escaped labels and messages for the built-in login page. */
+  strings?: SitegateStrings;
   /** Receives best-effort, non-blocking security events without passwords, secrets, or tokens. */
   onEvent?: (event: SitegateEvent) => MaybePromise<void>;
   /** Test/support hook for supplying time. */

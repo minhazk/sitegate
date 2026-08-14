@@ -53,6 +53,7 @@ deployment account, and server environment are trusted.
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
 | Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
+| OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
 
 ## Residual risks and deliberate limitations
 
@@ -72,6 +73,9 @@ deployment account, and server environment are trusted.
 - `noindex` is advisory and does not make a hostname secret.
 - A CDN, alternate origin, preview bypass, stale public cache, or incorrect matcher can route around
   the gate. Deployment verification is required.
+- Next.js/OpenNext/SST Proxy or Middleware execution and the public origin reconstructed in
+  `request.url` are trusted host inputs. Keep the framework and adapter patched and reject untrusted
+  host headers at the public edge.
 - The Vite plugin protects HTTP requests in development and local preview only. A static Vite build
   has no authentication server, and HMR WebSocket traffic is outside the plugin's HTTP middleware
   boundary.
