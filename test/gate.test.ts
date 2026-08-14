@@ -241,6 +241,31 @@ describe("login and logout security", () => {
     expect(limited.headers.get("retry-after")).toBeTruthy();
   });
 
+  it("can disable attempt limiting without creating or calling a limiter", async () => {
+    const gate = makeGate({ rateLimit: false });
+    const page = await loginForm(gate);
+
+    for (let attempt = 0; attempt < 205; attempt += 1) {
+      expect((await submitLogin(gate, `wrong password ${attempt}`, "/", page)).status).toBe(401);
+    }
+
+    expect((await submitLogin(gate, TEST_PASSWORD, "/", page)).status).toBe(303);
+  });
+
+  it("uses a developer-provided limiter through the public interface", async () => {
+    const consume = vi.fn(() => ({ limited: false }));
+    const reset = vi.fn();
+    const gate = makeGate({
+      rateLimit: {
+        limiter: { scope: "shared", consume, reset },
+      },
+    });
+
+    expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
+    expect(consume).toHaveBeenCalledWith("untrusted-proxy", expect.any(Number));
+    expect(reset).toHaveBeenCalledWith("untrusted-proxy");
+  });
+
   it("does not count successful logins against the global failure budget", async () => {
     const gate = makeGate({
       rateLimit: { maxAttempts: 2, globalMaxAttempts: 2, windowSeconds: 60 },

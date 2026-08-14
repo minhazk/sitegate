@@ -22,7 +22,8 @@ application using server-only configuration.
 - The built-in responsive login page has no client JavaScript or UI dependencies.
 - Login CSRF protection combines same-origin checks, Fetch Metadata, a signed token, and a
   short-lived `__Host-` pre-session cookie.
-- A rolling, process-local brute-force limiter is included, with a pluggable shared-store interface.
+- A rolling, process-local brute-force limiter is included, can be disabled completely, and accepts
+  a developer-provided implementation through a small interface.
 - Protected responses are marked `private, no-store`, varied on cookies, and excluded from compliant
   search indexing.
 - The core uses standard `Request` and `Response`; adapters cover Next.js 14–16 and Vite 6–8.
@@ -164,7 +165,7 @@ export const proxy = sitegate({
 | `excludedPaths` | none | Always wins over `protectedPaths`; login/logout remain handled. |
 | `secureCookies` | `"auto"` | Adds `Secure` for HTTPS. Set `true` when TLS is terminated before an HTTP origin and the request URL is not reconstructed as HTTPS. |
 | `sameSite` | `"strict"` | May be changed to `"lax"` when cross-site navigation continuity matters. |
-| `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Successful logins are removed from both budgets. Recognized serverless runtimes require a shared `limiter`; set `false` only when an equivalent outer control exists. |
+| `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Successful logins are removed from both budgets. Set `false` for zero-infrastructure mode, or pass your own `limiter`. |
 | `branding` | Sitegate defaults | Text, a root-relative logo path without a query or hash, and a six-digit accent color. No raw HTML. Add the logo path to `excludedPaths` if it must load before login. |
 | `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events. |
 
@@ -204,26 +205,62 @@ The core exposes typed path policy helpers and a `LoginAttemptLimiter` interface
 Fastify, Nuxt, Workers, or production Vite hosts can integrate without rewriting session or login
 logic.
 
+## Lightweight rate-limit choices
+
+Sitegate never installs or connects to Redis, a database, or a hosted rate-limit service. Choose one
+of three modes:
+
+1. Omit `rateLimit` to use the included, bounded in-process `Map`. This is the default and needs no
+   infrastructure, but it is suitable only when one process owns the login budget.
+2. Set `rateLimit: false` to create no limiter at all—no `Map`, database, service, or rate-limit
+   calls:
+
+   ```ts
+   export const proxy = sitegate({
+     rateLimit: false,
+   });
+   ```
+
+3. Pass an implementation the application already owns. Sitegate depends only on the interface and
+   never bundles a provider adapter:
+
+   ```ts
+   import type { LoginAttemptLimiter } from "sitegate";
+
+   const limiter: LoginAttemptLimiter = myApplicationLimiter;
+
+   export const proxy = sitegate({
+     rateLimit: { limiter },
+   });
+   ```
+
+With rate limiting disabled, unauthenticated protected-route requests do a cookie lookup and deny or
+redirect; a supplied session cookie also requires cryptographic verification. Login submissions
+still run origin, CSRF, form-size, and password checks. Disabling the limiter therefore removes
+password-guessing and login-endpoint compute-abuse throttling. Use a strong unique password and make
+this explicit tradeoff only for deployments where that risk is acceptable.
+
 ## Rate limiting in serverless and multi-region deployments
 
 The default limiter is bounded to the current JavaScript process. It is suitable for a single
 server, but it is not coordinated across processes, regions, or cold starts. In recognized
 multi-instance runtimes—including AWS Lambda/SST, Vercel, Netlify, Google serverless runtimes, and
 Azure App Service/Functions—Sitegate refuses to start with the process-local default. Pass a
-`LoginAttemptLimiter` backed by your existing shared store with `scope: "shared"`, or set
-`rateLimit: false` only when an equivalent CDN/WAF control is enforced. Its `consume` operation must
-atomically reserve an attempt, and `reset` must clear that client's entries from client and global
-buckets after successful authentication.
+`LoginAttemptLimiter` backed by infrastructure your application already uses with `scope: "shared"`,
+or explicitly set `rateLimit: false` to accept the unthrottled-login risk. A custom limiter's
+`consume` operation must atomically reserve an attempt, and `reset` must clear that client's entries
+from client and global buckets after successful authentication.
 
 Runtime detection is a fail-safe for known platforms, not a substitute for deployment design. If a
-different platform can create multiple processes or isolates, configure the shared limiter or the
-external control explicitly. Successful logins clear their client's provisional entries from both
-the client and global budgets. An already-exhausted bucket still rejects every submission before
-password verification; otherwise rate limiting would not constrain password guessing.
+different platform can create multiple processes or isolates, choose a shared limiter, an external
+control, or the explicit unthrottled mode. Successful logins clear their client's provisional
+entries from both the client and global budgets. An already-exhausted bucket still rejects every
+submission before password verification; otherwise rate limiting would not constrain password
+guessing.
 
-Sitegate deliberately does not choose a DynamoDB, Redis, or provider-specific implementation for
-the host application. For example, an SST application must connect `LoginAttemptLimiter` to its
-own shared atomic store, or enforce the equivalent rule at its CDN/WAF boundary.
+Sitegate deliberately does not choose or bundle a DynamoDB, Redis, or provider-specific
+implementation. For example, an SST application can pass its own shared atomic limiter, enforce an
+equivalent rule at its edge, or explicitly use `rateLimit: false` without adding infrastructure.
 
 By default Sitegate does not trust `X-Forwarded-For`, so untrusted clients cannot rotate a spoofed
 header to evade the local limiter. Set `rateLimit.trustProxy: true` only when your platform strips
@@ -274,7 +311,8 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
    static asset, image, and route handler without cookies.
 4. Confirm the CDN cannot serve a previously cached private response before the gate runs. Purge
    old public objects when enabling Sitegate on an existing deployment.
-5. Configure a shared login limiter or an edge/WAF rule for scaled public deployments.
+5. Choose the login-attempt mode explicitly: the default for one process, an application-owned
+   shared/edge limiter for coordinated throttling, or `rateLimit: false` with its documented risk.
 6. Test the platform's canonical URL, preview aliases, origin hostname, and branch URLs; disable
    bypass URLs where possible.
 7. Verify `Set-Cookie`, `Cache-Control`, `Vary`, and `X-Robots-Tag` on the deployed response.

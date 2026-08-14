@@ -61,8 +61,11 @@ deployment account, and server environment are trusted.
   a database. Password or secret rotation revokes all tokens.
 - Stateless sessions enforce an absolute timeout, not an idle timeout.
 - The default in-memory limiter is neither durable nor globally coordinated. Recognized serverless
-  runtimes reject it; other scaled deployments must configure the shared limiter or an equivalent
-  edge rate limit explicitly.
+  runtimes reject it; scaled deployments must configure a coordinated control or explicitly disable
+  rate limiting and accept the residual risk.
+- When `rateLimit: false`, login submissions have no brute-force or compute-abuse throttle. Sitegate
+  still validates origin, CSRF, body size, and passwords, but the host explicitly accepts the
+  remaining availability and password-guessing risk.
 - A distributed attacker can still consume login capacity or attempt guesses across many instances.
 - Application XSS can perform same-origin actions using the victim's browser even though it cannot
   read an `HttpOnly` cookie.
