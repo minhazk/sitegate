@@ -6,6 +6,20 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-14
+
+### Added
+
+- Document zero-infrastructure `rateLimit: false` mode, which creates no in-process limiter and
+  requires no database, Redis instance, or hosted service.
+- Regression coverage for fully disabled rate limiting and developer-provided
+  `LoginAttemptLimiter` implementations.
+
+### Changed
+
+- Clarify the security and compute-abuse tradeoff when login throttling is disabled and that
+  Sitegate never bundles provider-specific rate-limit adapters.
+
 ## [0.1.2] - 2026-08-13
 
 ### Security
@@ -55,7 +69,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/minhazk/sitegate/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/minhazk/sitegate/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/minhazk/sitegate/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/minhazk/sitegate/releases/tag/v0.1.0

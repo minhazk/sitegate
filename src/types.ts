@@ -78,7 +78,10 @@ export interface SitegateConfig {
   secureCookies?: boolean | "auto";
   /** Session and CSRF cookie SameSite value. Default: `strict`. */
   sameSite?: SitegateSameSite;
-  /** Disable only if equivalent protection exists outside Sitegate. */
+  /**
+   * Login-attempt limiting. Set `false` for zero-infrastructure mode: Sitegate creates no limiter
+   * and the host accepts responsibility for password guessing and login-endpoint abuse.
+   */
   rateLimit?: false | RateLimitOptions;
   branding?: SitegateBranding;
   /** Receives best-effort, non-blocking security events without passwords, secrets, or tokens. */
