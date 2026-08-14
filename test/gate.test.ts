@@ -149,9 +149,18 @@ describe("request protection", () => {
     expect((await gate.handle(new Request(`${BASE_URL}/api/users`), blocked)).status).toBe(401);
   });
 
-  it("protects encoded variants of selectively protected routes", async () => {
+  it("fails closed for hostile variants of selectively protected routes", async () => {
     const gate = makeGate({ protectedPaths: ["/admin"] });
-    for (const path of ["/%61dmin", "/%2561dmin", "/admin%2Fusers", "/admin%5Cusers"]) {
+    for (const path of [
+      "/%61dmin",
+      "/%2561dmin",
+      "/admin%2Fusers",
+      "/public%2F..%2Fadmin",
+      "/admin%5Cusers",
+      "/admin%00public",
+      "/%zz",
+      "/%252525252561dmin",
+    ]) {
       const response = await gate.handle(new Request(`${BASE_URL}${path}`), blocked);
       expect(response.status).toBe(401);
     }
@@ -239,6 +248,40 @@ describe("login and logout security", () => {
     expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
     expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
     expect((await submitLogin(gate, TEST_PASSWORD)).status).toBe(303);
+  });
+
+  it("does not let successful clients consume one another's global failure budget", async () => {
+    const gate = makeGate({
+      rateLimit: {
+        maxAttempts: 2,
+        globalMaxAttempts: 2,
+        windowSeconds: 15 * 60,
+        getClientId: (request) => request.headers.get("x-test-client") ?? "unknown",
+      },
+    });
+
+    async function submitFrom(clientId: string): Promise<Response> {
+      const page = await loginForm(gate);
+      const body = new URLSearchParams({ csrf: page.token, next: "/", password: TEST_PASSWORD });
+      return gate.handle(
+        new Request(`${BASE_URL}${gate.loginPath}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Cookie: page.cookie,
+            Origin: BASE_URL,
+            "Sec-Fetch-Site": "same-origin",
+            "X-Test-Client": clientId,
+          },
+          body,
+        }),
+        blocked,
+      );
+    }
+
+    expect((await submitFrom("client-a")).status).toBe(303);
+    expect((await submitFrom("client-b")).status).toBe(303);
+    expect((await submitFrom("client-c")).status).toBe(303);
   });
 
   it("does not admit concurrent attempts beyond the configured limit", async () => {

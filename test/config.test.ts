@@ -69,7 +69,7 @@ describe("configuration", () => {
     expect(await response.text()).toBe("ok");
   });
 
-  it("requires shared or external rate limiting in AWS Lambda", () => {
+  it("requires shared or external rate limiting in AWS Lambda/SST", () => {
     vi.stubEnv("AWS_LAMBDA_FUNCTION_NAME", "starla-production");
 
     expect(() => createSitegate({ password: TEST_PASSWORD, secret: TEST_SECRET })).toThrow(
@@ -107,5 +107,11 @@ describe("configuration", () => {
     expect(() =>
       createSitegate({ password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: false }),
     ).not.toThrow();
+
+    vi.unstubAllEnvs();
+    vi.stubEnv("AWS_EXECUTION_ENV", "AWS_Lambda_nodejs24.x");
+    expect(() => createSitegate({ password: TEST_PASSWORD, secret: TEST_SECRET })).toThrow(
+      "shared limiter",
+    );
   });
 });

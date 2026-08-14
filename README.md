@@ -221,6 +221,10 @@ external control explicitly. Successful logins clear their client's provisional 
 the client and global budgets. An already-exhausted bucket still rejects every submission before
 password verification; otherwise rate limiting would not constrain password guessing.
 
+Sitegate deliberately does not choose a DynamoDB, Redis, or provider-specific implementation for
+the host application. For example, an SST application must connect `LoginAttemptLimiter` to its
+own shared atomic store, or enforce the equivalent rule at its CDN/WAF boundary.
+
 By default Sitegate does not trust `X-Forwarded-For`, so untrusted clients cannot rotate a spoofed
 header to evade the local limiter. Set `rateLimit.trustProxy: true` only when your platform strips
 incoming forwarding headers and writes a trustworthy client address. Custom client identifiers are
