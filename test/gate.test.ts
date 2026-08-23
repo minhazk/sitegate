@@ -256,29 +256,66 @@ describe("request protection", () => {
 });
 
 describe("login and logout security", () => {
-  it("requires same-origin requests and a signed form-bound CSRF value", async () => {
+  async function submitLoginWithSourceHeaders(
+    sourceHeaders: Record<string, string>,
+    csrfSuffix = "",
+  ): Promise<Response> {
     const gate = makeGate();
     const page = await loginForm(gate);
-    const body = new URLSearchParams({ csrf: page.token, password: TEST_PASSWORD });
-    const crossSite = await gate.handle(
+    const body = new URLSearchParams({
+      csrf: `${page.token}${csrfSuffix}`,
+      password: TEST_PASSWORD,
+    });
+    return gate.handle(
       new Request(`${BASE_URL}${gate.loginPath}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Cookie: page.cookie,
-          Origin: "https://evil.test",
-          "Sec-Fetch-Site": "cross-site",
+          ...sourceHeaders,
         },
         body,
       }),
       blocked,
     );
-    expect(crossSite.status).toBe(403);
+  }
 
-    const forged = await submitLogin(gate, TEST_PASSWORD, "/", {
-      ...page,
-      token: `${page.token}x`,
-    });
+  it.each([
+    ["an exactly matching Origin", { Origin: BASE_URL }],
+    ["a Referer with an exactly matching origin", { Referer: `${BASE_URL}/source` }],
+    ["matching Origin and Referer headers", { Origin: BASE_URL, Referer: `${BASE_URL}/source` }],
+    ["same-origin fetch metadata without Origin or Referer", { "Sec-Fetch-Site": "same-origin" }],
+  ])("accepts a valid login with %s", async (_name, headers) => {
+    expect((await submitLoginWithSourceHeaders(headers)).status).toBe(303);
+  });
+
+  it.each([
+    [
+      "cross-site fetch metadata even when source headers match",
+      {
+        Origin: BASE_URL,
+        Referer: `${BASE_URL}/source`,
+        "Sec-Fetch-Site": "cross-site",
+      },
+    ],
+    [
+      "same-site fetch metadata even when the Origin matches",
+      { Origin: BASE_URL, "Sec-Fetch-Site": "same-site" },
+    ],
+    ["no source or fetch metadata", {}],
+    ["a malformed Referer", { Referer: "not a URL" }],
+    ["a mismatched Origin", { Origin: "https://other.example.com" }],
+    ["a mismatched Referer", { Referer: "https://other.example.com/source" }],
+    [
+      "a matching Origin but mismatched Referer",
+      { Origin: BASE_URL, Referer: "https://other.example.com/source" },
+    ],
+  ])("rejects a login with %s", async (_name, headers) => {
+    expect((await submitLoginWithSourceHeaders(headers)).status).toBe(403);
+  });
+
+  it("still requires a valid form-bound CSRF value for the headerless same-origin fallback", async () => {
+    const forged = await submitLoginWithSourceHeaders({ "Sec-Fetch-Site": "same-origin" }, "x");
     expect(forged.status).toBe(403);
   });
 

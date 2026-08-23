@@ -6,6 +6,14 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-23
+
+### Fixed
+
+- Accept legitimate same-origin login and logout requests when browsers omit both `Origin` and
+  `Referer` but send `Sec-Fetch-Site: same-origin`, while retaining strict source-header and CSRF
+  validation.
+
 ## [0.2.0] - 2026-08-14
 
 ### Added
@@ -90,7 +98,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/minhazk/sitegate/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/minhazk/sitegate/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/minhazk/sitegate/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/minhazk/sitegate/compare/v0.1.1...v0.1.2
