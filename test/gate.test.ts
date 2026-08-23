@@ -258,22 +258,24 @@ describe("request protection", () => {
 describe("login and logout security", () => {
   async function submitLoginWithSourceHeaders(
     sourceHeaders: Record<string, string>,
-    csrfSuffix = "",
+    csrfState: "valid" | "missing-token" | "invalid-token" | "missing-cookie" = "valid",
   ): Promise<Response> {
     const gate = makeGate();
     const page = await loginForm(gate);
-    const body = new URLSearchParams({
-      csrf: `${page.token}${csrfSuffix}`,
-      password: TEST_PASSWORD,
-    });
+    const body = new URLSearchParams({ password: TEST_PASSWORD });
+    if (csrfState !== "missing-token") {
+      body.set("csrf", csrfState === "invalid-token" ? `${page.token}x` : page.token);
+    }
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...sourceHeaders,
+    };
+    if (csrfState !== "missing-cookie") headers["Cookie"] = page.cookie;
+
     return gate.handle(
       new Request(`${BASE_URL}${gate.loginPath}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Cookie: page.cookie,
-          ...sourceHeaders,
-        },
+        headers,
         body,
       }),
       blocked,
@@ -285,6 +287,7 @@ describe("login and logout security", () => {
     ["a Referer with an exactly matching origin", { Referer: `${BASE_URL}/source` }],
     ["matching Origin and Referer headers", { Origin: BASE_URL, Referer: `${BASE_URL}/source` }],
     ["same-origin fetch metadata without Origin or Referer", { "Sec-Fetch-Site": "same-origin" }],
+    ["no source or fetch metadata", {}],
   ])("accepts a valid login with %s", async (_name, headers) => {
     expect((await submitLoginWithSourceHeaders(headers)).status).toBe(303);
   });
@@ -302,7 +305,6 @@ describe("login and logout security", () => {
       "same-site fetch metadata even when the Origin matches",
       { Origin: BASE_URL, "Sec-Fetch-Site": "same-site" },
     ],
-    ["no source or fetch metadata", {}],
     ["a malformed Referer", { Referer: "not a URL" }],
     ["a mismatched Origin", { Origin: "https://other.example.com" }],
     ["a mismatched Referer", { Referer: "https://other.example.com/source" }],
@@ -314,9 +316,12 @@ describe("login and logout security", () => {
     expect((await submitLoginWithSourceHeaders(headers)).status).toBe(403);
   });
 
-  it("still requires a valid form-bound CSRF value for the headerless same-origin fallback", async () => {
-    const forged = await submitLoginWithSourceHeaders({ "Sec-Fetch-Site": "same-origin" }, "x");
-    expect(forged.status).toBe(403);
+  it.each([
+    ["a missing CSRF token", "missing-token"],
+    ["an invalid CSRF token", "invalid-token"],
+    ["a missing CSRF cookie", "missing-cookie"],
+  ] as const)("rejects a source-header-free login with %s", async (_name, csrfState) => {
+    expect((await submitLoginWithSourceHeaders({}, csrfState)).status).toBe(403);
   });
 
   it("rate limits repeated failures before rechecking the password", async () => {
@@ -423,6 +428,15 @@ describe("login and logout security", () => {
       "sitegate_session=; Path=/; HttpOnly; Secure",
     );
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("keeps a source-header-free logout rejected because it has no form-bound CSRF token", async () => {
+    const gate = makeGate();
+    const response = await gate.handle(
+      new Request(`${BASE_URL}${gate.logoutPath}`, { method: "POST" }),
+      blocked,
+    );
+    expect(response.status).toBe(403);
   });
 
   it("rejects non-form and oversized login bodies", async () => {
