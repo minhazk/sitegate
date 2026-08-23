@@ -57,17 +57,29 @@ function acceptsHtml(request: Request): boolean {
 }
 
 function sameOrigin(request: Request): boolean {
-  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite === "cross-site" || fetchSite === "same-site") return false;
+
   const target = new URL(request.url).origin;
-  const source = request.headers.get("origin");
-  if (source !== null) return source === target;
-  const referer = request.headers.get("referer");
-  if (referer === null) return false;
-  try {
-    return new URL(referer).origin === target;
-  } catch {
-    return false;
+  let hasSourceHeader = false;
+
+  const origin = request.headers.get("origin");
+  if (origin !== null) {
+    hasSourceHeader = true;
+    if (origin !== target) return false;
   }
+
+  const referer = request.headers.get("referer");
+  if (referer !== null) {
+    hasSourceHeader = true;
+    try {
+      if (new URL(referer).origin !== target) return false;
+    } catch {
+      return false;
+    }
+  }
+
+  return hasSourceHeader || fetchSite === "same-origin";
 }
 
 function emit(handler: SitegateConfig["onEvent"], event: SitegateEvent): void {
