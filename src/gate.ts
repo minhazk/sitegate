@@ -56,7 +56,7 @@ function acceptsHtml(request: Request): boolean {
   return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
 }
 
-function sameOrigin(request: Request): boolean {
+function sourceHeadersAllowRequest(request: Request, allowMissing: boolean): boolean {
   const fetchSite = request.headers.get("sec-fetch-site");
   if (fetchSite === "cross-site" || fetchSite === "same-site") return false;
 
@@ -79,7 +79,7 @@ function sameOrigin(request: Request): boolean {
     }
   }
 
-  return hasSourceHeader || fetchSite === "same-origin";
+  return hasSourceHeader || fetchSite === "same-origin" || (allowMissing && fetchSite === null);
 }
 
 function emit(handler: SitegateConfig["onEvent"], event: SitegateEvent): void {
@@ -161,7 +161,9 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       return renderLogin(request, destination);
     }
     if (request.method !== "POST") return jsonError("Method not allowed.", 405);
-    if (!sameOrigin(request)) return jsonError("Cross-site login request rejected.", 403);
+    if (!sourceHeadersAllowRequest(request, true)) {
+      return jsonError("Cross-site login request rejected.", 403);
+    }
 
     const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
     if (contentType !== "application/x-www-form-urlencoded") {
@@ -236,7 +238,9 @@ export function createSitegate(input: SitegateConfig): Sitegate {
 
   async function handleLogout(request: Request): Promise<Response> {
     if (request.method !== "POST") return jsonError("Method not allowed.", 405);
-    if (!sameOrigin(request)) return jsonError("Cross-site logout request rejected.", 403);
+    if (!sourceHeadersAllowRequest(request, false)) {
+      return jsonError("Cross-site logout request rejected.", 403);
+    }
     const names = cookieNames(request, config);
     const response = redirect(config.loginPath);
     appendSetCookie(response, expireCookie(names.session, names.secure, config.sameSite));

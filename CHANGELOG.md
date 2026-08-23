@@ -13,6 +13,12 @@ All notable changes to Sitegate will be documented here. The project follows
 - Lower the enabled shared-password minimum from 12 Unicode characters to 1, leaving password
   strength policy to the consuming application while continuing to reject an empty password.
 
+### Fixed
+
+- Allow login requests with no `Origin`, `Referer`, or `Sec-Fetch-Site` headers to reach the signed
+  CSRF-cookie and CSRF-token validation, while continuing to reject explicit cross-site, same-site,
+  malformed, and mismatched source signals.
+
 ## [0.2.1] - 2026-08-23
 
 ### Fixed
