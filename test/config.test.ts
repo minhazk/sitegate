@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createSitegate, SitegateConfigurationError } from "../src/index.js";
-import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
+import { submitLogin, TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -8,7 +8,7 @@ afterEach(() => {
 
 describe("configuration", () => {
   it.each([
-    [{ password: "short", secret: TEST_SECRET }, "password"],
+    [{ password: "", secret: TEST_SECRET }, "password"],
     [{ password: TEST_PASSWORD, secret: "short" }, "secret"],
     [
       {
@@ -63,6 +63,11 @@ describe("configuration", () => {
   ])("rejects unsafe config: %s", (config, field) => {
     expect(() => createSitegate(config)).toThrowError(SitegateConfigurationError);
     expect(() => createSitegate(config)).toThrow(String(field));
+  });
+
+  it("accepts and authenticates a one-character shared password", async () => {
+    const gate = createSitegate({ password: "x", secret: TEST_SECRET });
+    expect((await submitLogin(gate, "x")).status).toBe(303);
   });
 
   it("does not require secrets while disabled", async () => {
