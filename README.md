@@ -215,7 +215,7 @@ export const proxy = sitegate({
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `password` | `SITEGATE_PASSWORD` in Next.js/Vite adapters | Required when enabled; at least 12 characters. |
+| `password` | `SITEGATE_PASSWORD` in Next.js/Vite adapters | Required when enabled; at least 1 Unicode character. The application owner controls password-strength policy. |
 | `secret` | `SITEGATE_SECRET` in Next.js/Vite adapters | Required when enabled; at least 32 UTF-8 bytes. Keep separate from the password. |
 | `enabled` | `true` | Makes protection easy to remove or scope by environment. |
 | `sessionDuration` | 8 hours | Absolute lifetime; between 60 seconds and 30 days. |
@@ -386,9 +386,9 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
 
 ## Troubleshooting
 
-**`SitegateConfigurationError: password must contain at least 12 characters`**  
-Use a longer shared password. Sitegate fails closed rather than silently accepting weak or missing
-configuration.
+**`SitegateConfigurationError: password must contain at least 1 character`**
+Set a non-empty shared password. Sitegate leaves password-strength policy to the application owner
+while continuing to fail closed on missing configuration.
 
 **The login works on localhost but loops in production**  
 Check that the public request is recognized as HTTPS and that a proxy/CDN is not stripping the

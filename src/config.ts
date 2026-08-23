@@ -84,9 +84,9 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
   }
 
   if (enabled) {
-    if ([...config.password].length < 12) {
+    if ([...config.password].length < 1) {
       throw new SitegateConfigurationError(
-        "password must contain at least 12 characters when Sitegate is enabled.",
+        "password must contain at least 1 character when Sitegate is enabled.",
       );
     }
     if (new TextEncoder().encode(config.secret).byteLength < 32) {

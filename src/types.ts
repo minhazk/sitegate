@@ -75,7 +75,7 @@ export interface SitegateStrings {
 }
 
 export interface SitegateConfig {
-  /** Shared password. Must contain at least 12 Unicode characters when enabled. */
+  /** Shared password. Must contain at least 1 Unicode character when enabled. */
   password: string;
   /** Signing secret. Must contain at least 32 UTF-8 bytes when enabled. */
   secret: string;
