@@ -79,3 +79,18 @@ The design maps to these primary references:
 - [Web Crypto HMAC verification](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify): native verification instead of a JavaScript string comparison.
 
 The resulting decisions and residual risk are recorded in [the threat model](THREAT_MODEL.md).
+
+## Release integrity guidance
+
+GitHub documents that `id-token: write` enables OIDC token issuance for the job where it is granted,
+so Sitegate keeps repository checkout, tests, builds, and packing in a job without that permission.
+The current official artifact actions provide an immutable cross-job artifact; both actions are
+pinned to full commit SHAs. The packaging job records a SHA-256 digest and the isolated publisher
+verifies it before publication.
+
+The [pnpm publish documentation](https://pnpm.io/cli/publish) accepts a tarball path. Sitegate
+therefore publishes the transferred `.tgz` rather than asking the OIDC-enabled job to pack a mutable
+checkout again, and disables package lifecycle scripts at both pack and publish time. See GitHub's
+[OIDC permission reference](https://docs.github.com/en/actions/reference/security/oidc) and the
+official [artifact upload](https://github.com/actions/upload-artifact) and
+[artifact download](https://github.com/actions/download-artifact) repositories.

@@ -331,6 +331,12 @@ header to evade the local limiter. Set `rateLimit.trustProxy: true` only when yo
 incoming forwarding headers and writes a trustworthy client address. Custom client identifiers are
 hashed or otherwise made non-sensitive by the application before use.
 
+Without a trusted client identity, every requester deliberately shares the same 200-attempt global
+budget. This prevents a requester from evading the limiter with spoofed forwarding headers, but one
+requester can consume the budget and temporarily reject every new login until attempts expire.
+Existing authenticated sessions remain valid. Behind a trusted proxy, enable `trustProxy`, or pass
+an application-owned non-sensitive `getClientId`, when per-client isolation is preferable.
+
 ## Security model
 
 Sitegate assumes:

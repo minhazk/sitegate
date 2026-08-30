@@ -12,12 +12,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
+  package:
     runs-on: ubuntu-latest
-    environment: npm
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -46,5 +46,55 @@ jobs:
           runtime: node@24
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm check
-      - run: pnpm config set registry https://registry.npmjs.org
-      - run: pnpm publish --access public --provenance
+      - name: Build one immutable package artifact
+        env:
+          PNPM_CONFIG_IGNORE_SCRIPTS: "true"
+        run: |
+          mkdir -p release-artifact
+          pnpm pack --pack-destination release-artifact
+          test "$(find release-artifact -maxdepth 1 -type f -name '*.tgz' | wc -l)" -eq 1
+          TARBALL="$(find release-artifact -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          tar -tzf "$TARBALL" > release-artifact/contents.txt
+          grep -Fxq "package/package.json" release-artifact/contents.txt
+          grep -Fxq "package/dist/index.js" release-artifact/contents.txt
+          grep -Fxq "package/dist/index.d.ts" release-artifact/contents.txt
+          sha256sum "$TARBALL" > "$TARBALL.sha256"
+      - name: Transfer the verified package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sitegate-package
+          path: release-artifact/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: none
+      id-token: write
+    steps:
+      - name: Download the verified package artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sitegate-package
+          path: release-artifact
+      - name: Verify the transferred artifact digest
+        run: |
+          test "$(find release-artifact -maxdepth 1 -type f -name '*.tgz' | wc -l)" -eq 1
+          TARBALL="$(find release-artifact -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -f "$TARBALL.sha256"
+          sha256sum --check "$TARBALL.sha256"
+      - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2
+        with:
+          version: 11.16.0
+          cache: false
+          install: false
+          runtime: node@24
+      - name: Publish only the verified tarball with provenance
+        env:
+          PNPM_CONFIG_IGNORE_SCRIPTS: "true"
+        run: |
+          TARBALL="$(find release-artifact -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          pnpm publish "$TARBALL" --registry https://registry.npmjs.org --access public --provenance --no-git-checks

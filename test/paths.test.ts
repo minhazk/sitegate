@@ -39,6 +39,9 @@ describe("path policy", () => {
   it("normalizes paths to a stable authorization representation", () => {
     expect(canonicalPathname("/%2561dmin")).toBe("/admin");
     expect(canonicalPathname("/public%2F..%2Fadmin")).toBe("/admin");
+    expect(canonicalPathname("/public/../admin")).toBe("/admin");
+    expect(canonicalPathname("/caf%C3%A9")).toBe("/caf%C3%A9");
+    expect(canonicalPathname("/folder%20name")).toBe("/folder%20name");
     expect(canonicalPathname("/%zz")).toBeUndefined();
     expect(canonicalPathname("/%252525252561dmin")).toBeUndefined();
     expect(canonicalPathname("/admin%5Cusers")).toBeUndefined();
@@ -46,6 +49,16 @@ describe("path policy", () => {
     expect(canonicalPathname(`/admin${"%23"}public`)).toBeUndefined();
     expect(canonicalPathname("/%2Fevil.test/admin")).toBeUndefined();
     expect(canonicalPathname("/admin%00public")).toBeUndefined();
+  });
+
+  it.each([
+    "/public/..//index.html",
+    "/public%2F..%2F%2Findex.html",
+    "/%2e//index.html",
+    "/safe/%2e%2e//index.html",
+  ])("rejects a path that becomes ambiguous only after normalization: %s", (pathname) => {
+    expect(canonicalPathname(pathname)).toBeUndefined();
+    expect(isProtectedPath(pathname, ["/index.html"], [])).toBe(true);
   });
 });
 
@@ -58,5 +71,27 @@ describe("safeDestination", () => {
   it("preserves a safe local path, query, and hash", () => {
     const destination = `/reports?${"id"}=4#summary`;
     expect(safeDestination(destination)).toBe(destination);
+  });
+
+  it.each([
+    "/.//evil.test/phish",
+    "/safe/..//evil.test/phish",
+    "/%2e//evil.test/phish",
+    "/safe/%2e%2e//evil.test/phish",
+  ])("rejects a network-path redirect created by normalization: %s", (destination) => {
+    expect(safeDestination(destination)).toBe("/");
+  });
+
+  it("validates an application-provided fallback before returning it", () => {
+    expect(safeDestination("https://evil.test", "/reports")).toBe("/reports");
+    expect(safeDestination("https://evil.test", "/.//evil.test")).toBe("/");
+  });
+
+  it("keeps encoded path data local when URL resolution remains same-origin", () => {
+    const destination = `/download/${"%2F"}report?format=pdf#ready`;
+    expect(safeDestination(destination)).toBe(destination);
+    expect(new URL(safeDestination(destination), "https://sitegate.invalid").origin).toBe(
+      "https://sitegate.invalid",
+    );
   });
 });

@@ -18,6 +18,7 @@ around it.
 - The session signing secret.
 - Authenticated session tokens.
 - Availability of the login endpoint.
+- Integrity and provenance of the published npm tarball.
 
 ## Attacker capabilities
 
@@ -46,14 +47,17 @@ deployment account, and server environment are trusted.
 | Session fixation | A fresh random session ID and new signed token are issued after authentication; the pre-session CSRF cookie is deleted. |
 | Stale sessions after password rotation | The session signing key is derived from both the independent secret and current password. |
 | Cookie theft from script | `HttpOnly`; `Secure` on HTTPS; host-only `__Host-` names; no `Domain`; `Path=/`. |
-| CSRF login/logout | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login token; state changes use POST. |
-| Open redirect | Only normalized root-relative paths without authorities, backslashes, whitespace, or controls are accepted. |
-| Brute force | Rolling per-client and global attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
+| Login CSRF | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login-form token. |
+| Logout CSRF | POST-only endpoint plus `SameSite=Strict`, Fetch Metadata, and exact Origin/Referer validation. Logout does not accept the login-form token as a substitute for source validation. |
+| Path-policy ambiguity | Encoded input is decoded to a bounded depth and ambiguous syntax is rejected both before and after URL normalization; exclusions must match raw and canonical representations. |
+| Open redirect | Only root-relative destinations that remain local after final URL normalization and reparsing are accepted. |
+| Brute force | Rolling per-client and global queue-based attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
 | Sensitive caching | `Cache-Control: private, no-store, max-age=0` and `Vary: Cookie` on all responses while enabled. |
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
 | Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
 | OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
+| Release artifact substitution | Validation/build runs without OIDC, produces one checksummed immutable tarball, and transfers it to an isolated publisher that has no checkout and publishes only that tarball with lifecycle scripts disabled. |
 
 ## Residual risks and deliberate limitations
 
@@ -64,6 +68,9 @@ deployment account, and server environment are trusted.
 - The default in-memory limiter is neither durable nor globally coordinated. Recognized serverless
   runtimes reject it; scaled deployments must configure a coordinated control or explicitly disable
   rate limiting and accept the residual risk.
+- Without a trusted client identity, the default limiter intentionally shares one 200-attempt
+  budget across all requesters. One requester can temporarily exhaust new-login capacity; existing
+  sessions remain valid. Trust forwarding headers only behind an edge that overwrites them.
 - When `rateLimit: false`, login submissions have no brute-force or compute-abuse throttle. Sitegate
   still validates origin, CSRF, body size, and passwords, but the host explicitly accepts the
   remaining availability and password-guessing risk.
@@ -80,6 +87,8 @@ deployment account, and server environment are trusted.
   has no authentication server, and HMR WebSocket traffic is outside the plugin's HTTP middleware
   boundary.
 - Sitegate does not add HSTS because TLS topology and preload/subdomain policy belong to the host.
+- Release security still depends on repository/tag governance, GitHub environment protection, and
+  the npm trusted-publisher identity accepting only the intended workflow and environment.
 
 ## Security design references
 
@@ -92,6 +101,8 @@ deployment account, and server environment are trusted.
 - [Next.js authentication guidance](https://nextjs.org/docs/app/guides/authentication)
 - [Vite Plugin API](https://vite.dev/guide/api-plugin.html)
 - [Vite static deployment guidance](https://vite.dev/guide/static-deploy.html)
+- [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
+- [pnpm publish](https://pnpm.io/cli/publish)
 - [Web Crypto `SubtleCrypto.verify`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify)
 
 This design uses established platform primitives and `jose`; it does not define a new cryptographic

@@ -68,6 +68,41 @@ describe("Next.js adapter", () => {
     expect(logout.headers.get("location")).toBe(`${NEXT_ORIGIN}/_sitegate/login`);
   });
 
+  it("keeps normalized successful-login destinations on the application origin", async () => {
+    const proxy = sitegate({ password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: false });
+    const maliciousDestination = "/.//evil.test/phish";
+    const loginPage = await proxy(
+      new NextRequest(
+        `${NEXT_ORIGIN}/_sitegate/login?next=${encodeURIComponent(maliciousDestination)}`,
+        { headers: { Accept: "text/html" } },
+      ),
+    );
+    const html = await loginPage.clone().text();
+    const csrfToken = /name="csrf" value="([^"]+)"/u.exec(html)?.[1];
+    if (csrfToken === undefined) throw new Error("Missing CSRF token");
+    const csrfCookie = cookieValue(loginPage, "__Host-sitegate_csrf");
+
+    const response = await proxy(
+      new NextRequest(`${NEXT_ORIGIN}/_sitegate/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: `__Host-sitegate_csrf=${encodeURIComponent(csrfCookie)}`,
+          Origin: NEXT_ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+        },
+        body: new URLSearchParams({
+          csrf: csrfToken,
+          next: maliciousDestination,
+          password: TEST_PASSWORD,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(`${NEXT_ORIGIN}/`);
+  });
+
   it("preserves API denial without turning it into an HTML redirect", async () => {
     const proxy = sitegate({ password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: false });
     const response = await proxy(

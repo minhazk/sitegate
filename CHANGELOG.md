@@ -6,6 +6,25 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-30
+
+### Security
+
+- Revalidate canonical paths after URL normalization so encoded separators and dot segments cannot
+  bypass selective `protectedPaths` policies in Vite or another normalizing downstream server.
+- Revalidate normalized login destinations before emitting `Location`, preventing dot segments
+  from creating an external network-path redirect.
+- Replace full-array rate-limit history copies with bounded queues and indexed client records, so
+  maximum supported windows and saturated rejections remain amortized constant-time.
+- Split release validation and npm publication into separate least-privilege jobs, transfer one
+  checksummed immutable tarball, and publish only that artifact from the OIDC-enabled job.
+
+### Changed
+
+- Remove the unused `SITEGATE_ENABLED` example variable; callers continue to pass `enabled`
+  explicitly in adapter configuration.
+- Clarify the deliberate shared-budget behavior of the default untrusted-proxy rate limiter.
+
 ## [0.2.2] - 2026-08-23
 
 ### Changed
@@ -111,7 +130,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/minhazk/sitegate/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/minhazk/sitegate/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/minhazk/sitegate/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/minhazk/sitegate/compare/v0.1.3...v0.2.0

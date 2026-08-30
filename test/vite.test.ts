@@ -39,6 +39,54 @@ describe("Vite adapter", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
+  it("denies encoded aliases that Vite would normalize onto a selectively protected file", async () => {
+    const selectiveServer = await createServer({
+      root: fileURLToPath(new URL("./fixtures/vite", import.meta.url)),
+      logLevel: "silent",
+      plugins: [
+        viteSitegate({
+          password: TEST_PASSWORD,
+          secret: TEST_SECRET,
+          protectedPaths: ["/index.html"],
+        }),
+      ],
+      server: { host: "127.0.0.1", port: 0 },
+    });
+    await selectiveServer.listen();
+
+    try {
+      const address = selectiveServer.httpServer?.address() as AddressInfo;
+      const response = await new Promise<{ body: string; status: number | undefined }>(
+        (resolve, reject) => {
+          const request = httpRequest(
+            {
+              host: "127.0.0.1",
+              port: address.port,
+              path: "/public%2F..%2F%2Findex.html",
+              headers: { Accept: "text/html" },
+            },
+            (incoming) => {
+              incoming.setEncoding("utf8");
+              let body = "";
+              incoming.on("data", (chunk: string) => {
+                body += chunk;
+              });
+              incoming.once("end", () => resolve({ body, status: incoming.statusCode }));
+            },
+          );
+          request.once("error", reject);
+          request.end();
+        },
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.body).toContain("Authentication required");
+      expect(response.body).not.toContain("Protected Vite fixture");
+    } finally {
+      await selectiveServer.close();
+    }
+  });
+
   it("serves login, creates a session, and protects the downstream Vite response", async () => {
     const loginPage = await fetch(`${baseUrl}/_sitegate/login?next=%2F`);
     const html = await loginPage.text();
