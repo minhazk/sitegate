@@ -207,4 +207,33 @@ describe("Vite adapter", () => {
     expect(use).toHaveBeenCalledOnce();
     expect(use.mock.calls[0]?.[0]).toBeTypeOf("function");
   });
+
+  it("bypasses request conversion entirely when disabled", async () => {
+    const disabledPlugin = viteSitegate({ enabled: false });
+    const configResolved = disabledPlugin.configResolved as (config: {
+      envDir: string;
+      mode: string;
+    }) => void;
+    configResolved({
+      mode: "test",
+      envDir: process.cwd(),
+    });
+    const use = vi.fn();
+    const configure = disabledPlugin.configureServer as unknown as (server: {
+      middlewares: { use: typeof use };
+    }) => void;
+    configure({ middlewares: { use } });
+    const middleware = use.mock.calls[0]?.[0] as (
+      request: { headers: Record<string, string>; method: string; url: string },
+      response: Record<string, never>,
+      next: () => void,
+    ) => Promise<void>;
+    const next = vi.fn();
+    await middleware(
+      { headers: {}, method: "GET", url: "http://malformed.example/private" },
+      {},
+      next,
+    );
+    expect(next).toHaveBeenCalledOnce();
+  });
 });

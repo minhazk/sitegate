@@ -67,6 +67,34 @@ for local preview and is not designed as a production server. A `vite build` out
 assets, so the plugin cannot accompany those files into production. Production static deployments
 must enforce authentication in the host, CDN, reverse proxy, server, or edge boundary.
 
+## Express guidance
+
+Express's [middleware guide](https://expressjs.com/en/guide/using-middleware.html) defines
+application middleware as an ordered stack and requires `next()` to continue. Sitegate therefore
+returns a conventional request handler, stops the stack when it emits login or denial responses,
+and must be registered before parsers, static files, and protected routers. The adapter catches its
+asynchronous work explicitly so the same implementation forwards errors to both Express 4 and
+Express 5 error middleware.
+
+Express's [proxy guidance](https://expressjs.com/en/guide/behind-proxies.html) documents that
+`request.protocol` and related values can use forwarded headers when `trust proxy` is enabled.
+Sitegate uses Express's resolved protocol and host by default, leaves proxy trust to the
+application, and accepts an explicit application-owned origin for unusual topologies. Isolated
+consumers pin and smoke-test Express 4.22.2 with `@types/express` 4.17.25 and Express 5.2.1 with
+`@types/express` 5.0.6.
+
+## Fastify guidance
+
+Fastify's [hook reference](https://fastify.dev/docs/latest/Reference/Hooks/) places `onRequest`
+before body parsing and allows a hook to reply before the route runs. Sitegate uses that boundary
+to inspect only its own login submission and to deny unauthenticated requests before parsing or
+handlers. A final response lock covers route-level hooks that run after shared `onSend` hooks.
+
+Fastify's [plugin guide](https://fastify.dev/docs/latest/Guides/Plugins-Guide/) explains its
+encapsulation model. The exported adapter uses `fastify-plugin` so registration on the root instance
+protects later routes and nested plugins. The isolated consumer pins Fastify 5.12.1, while the peer
+range begins at the verified 5.8.5 API floor.
+
 ## Security guidance
 
 The design maps to these primary references:

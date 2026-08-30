@@ -56,6 +56,8 @@ deployment account, and server environment are trusted.
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
 | Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
+| Node adapter bypass | Express, Fastify, and Vite reconstruct a validated HTTP(S) URL from the raw target, reject malformed or ambiguous targets before continuation, and consume only bounded login bodies. |
+| Downstream header weakening | Node response setters, removals, direct `writeHead` calls, and late Fastify send hooks cannot replace Sitegate's cache, cookie-variance, or anti-indexing headers. |
 | OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
 | Release artifact substitution | Validation/build runs without OIDC, produces one checksummed immutable tarball, and transfers it to an isolated publisher that has no checkout and publishes only that tarball with lifecycle scripts disabled. |
 
@@ -86,6 +88,11 @@ deployment account, and server environment are trusted.
 - The Vite plugin protects HTTP requests in development and local preview only. A static Vite build
   has no authentication server, and HMR WebSocket traffic is outside the plugin's HTTP middleware
   boundary.
+- Express and Fastify trust the host framework's resolved public protocol and host. Incorrect proxy
+  trust can produce insecure cookies or source-check failures; configure the actual proxy topology
+  or use a fixed application-owned origin, never an arbitrary client-supplied forwarding value.
+- Register Express before body parsers/static middleware and register Fastify on the root instance
+  before protected routes. Earlier middleware or host routing remains outside Sitegate's boundary.
 - Sitegate does not add HSTS because TLS topology and preload/subdomain policy belong to the host.
 - Release security still depends on repository/tag governance, GitHub environment protection, and
   the npm trusted-publisher identity accepting only the intended workflow and environment.
@@ -101,6 +108,10 @@ deployment account, and server environment are trusted.
 - [Next.js authentication guidance](https://nextjs.org/docs/app/guides/authentication)
 - [Vite Plugin API](https://vite.dev/guide/api-plugin.html)
 - [Vite static deployment guidance](https://vite.dev/guide/static-deploy.html)
+- [Express middleware guide](https://expressjs.com/en/guide/using-middleware.html)
+- [Express behind proxies](https://expressjs.com/en/guide/behind-proxies.html)
+- [Fastify hooks](https://fastify.dev/docs/latest/Reference/Hooks/)
+- [Fastify plugins](https://fastify.dev/docs/latest/Guides/Plugins-Guide/)
 - [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [pnpm publish](https://pnpm.io/cli/publish)
 - [Web Crypto `SubtleCrypto.verify`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify)

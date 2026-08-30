@@ -35,5 +35,7 @@ jobs:
           install: false
           runtime: node@24
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm compat:express
+      - run: pnpm compat:fastify
       - run: pnpm compat:next
       - run: pnpm compat:vite

@@ -6,6 +6,29 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-30
+
+### Added
+
+- Add an Express adapter for Express 4.22.2 through 5, including full login/session integration,
+  bounded login-body handling, error middleware continuation, and isolated compatibility fixtures.
+- Add a root-scoped Fastify 5 plugin with nested-plugin coverage, pre-parser login handling, native
+  error integration, multiple-cookie support, and an isolated compatibility fixture.
+- Add shared, fail-closed Node request conversion and response utilities reused by Express,
+  Fastify, and Vite.
+
+### Security
+
+- Lock cache, cookie-variance, and anti-indexing headers through direct Node `writeHead` calls and
+  late Fastify `onSend` hooks so downstream code cannot weaken an authenticated response.
+- Reject malformed request targets and public-origin overrides before the protected application is
+  invoked, while bounding login streams at 4,097 captured bytes.
+
+### Fixed
+
+- Make disabled Vite protection bypass request conversion entirely, preserving malformed or
+  hostless requests for the downstream development server just like the other adapters.
+
 ## [0.2.3] - 2026-08-30
 
 ### Security
@@ -130,7 +153,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/minhazk/sitegate/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/minhazk/sitegate/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/minhazk/sitegate/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/minhazk/sitegate/compare/v0.2.0...v0.2.1

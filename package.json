@@ -1,6 +1,6 @@
 {
   "name": "sitegate",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "A secure, self-hosted password gate for staging and preview websites.",
   "keywords": [
     "password-protection",
@@ -8,6 +8,8 @@
     "preview",
     "nextjs",
     "vite",
+    "express",
+    "fastify",
     "middleware",
     "security"
   ],
@@ -46,6 +48,14 @@
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"
     },
+    "./express": {
+      "types": "./dist/express.d.ts",
+      "import": "./dist/express.js"
+    },
+    "./fastify": {
+      "types": "./dist/fastify.d.ts",
+      "import": "./dist/fastify.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {
@@ -59,6 +69,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:run && pnpm build && pnpm pack:check",
+    "compat:express": "pnpm build && pnpm --dir compat/express-4 check && pnpm --dir compat/express-5 check",
+    "compat:fastify": "pnpm build && pnpm --dir compat/fastify-5 check",
     "compat:next": "pnpm build && pnpm --dir compat/next-14 check && pnpm --dir compat/next-15 check && pnpm --dir compat/next-16 check",
     "compat:vite": "pnpm build && pnpm --dir compat/vite-6 check && pnpm --dir compat/vite-7 check && pnpm --dir compat/vite-8 check",
     "format": "biome format --write .",
@@ -70,13 +82,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "fastify-plugin": "^6.0.0",
     "jose": "^6.2.8"
   },
   "peerDependencies": {
+    "express": ">=4.22.2 <6",
+    "fastify": ">=5.8.5 <6",
     "next": ">=14.2.0 <17",
     "vite": ">=6.0.0 <9"
   },
   "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
     "next": {
       "optional": true
     },
@@ -86,8 +107,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
+    "@types/express": "5.0.6",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "express": "5.2.1",
+    "fastify": "5.12.1",
     "next": "16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

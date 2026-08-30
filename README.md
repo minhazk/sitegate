@@ -26,7 +26,8 @@ application using server-only configuration.
   a developer-provided implementation through a small interface.
 - Protected responses are marked `private, no-store`, varied on cookies, and excluded from compliant
   search indexing.
-- The core uses standard `Request` and `Response`; adapters cover Next.js 14–16 and Vite 6–8.
+- The core uses standard `Request` and `Response`; adapters cover Next.js 14–16, Vite 6–8,
+  Express 4–5, and Fastify 5.
 
 ## Install
 
@@ -34,12 +35,13 @@ application using server-only configuration.
 pnpm add sitegate
 ```
 
-Sitegate requires Node.js 24 LTS. Its optional framework peers support Next.js 14.2–16 and
-Vite 6–8.
+Sitegate requires Node.js 24 LTS. Its optional framework peers support Next.js 14.2–16, Vite 6–8,
+Express 4.22.2–5, and Fastify 5.8.5–5.
 
-`jose` is Sitegate's only direct runtime dependency. `next` and `vite` are optional peer
-dependencies supplied by the consuming application; package-manager audits may still display them
-in paths beneath Sitegate because peers participate in the host's resolved dependency graph.
+`jose` and the small `fastify-plugin` registration helper are Sitegate's direct runtime
+dependencies. Frameworks are optional peer dependencies supplied by the consuming application;
+package-manager audits may still display them in paths beneath Sitegate because peers participate
+in the host's resolved dependency graph.
 
 ## Minimal Next.js setup
 
@@ -184,6 +186,64 @@ login, CSRF, cookie, redirect, cache-control, and indexing integration tests.
 > server, or edge runtime before any file is served. Vite HMR WebSocket traffic is also outside the
 > plugin's HTTP middleware boundary.
 
+## Express
+
+Register Sitegate before body parsers, static-file middleware, and every protected router:
+
+```ts
+import express from "express";
+import { sitegate } from "sitegate/express";
+
+const app = express();
+
+app.use(sitegate());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static("public"));
+```
+
+The adapter supports Express 4.22.2 through Express 5 and reads `SITEGATE_PASSWORD` and
+`SITEGATE_SECRET` by default. It consumes only a login submission body, caps that body at 4 KiB,
+and leaves every other downstream request stream untouched. Sitegate responses preserve separate
+`Set-Cookie` fields, while allowed downstream responses keep their status and body with Sitegate's
+cache and indexing headers locked in place.
+
+Express derives `request.protocol` from the socket unless `trust proxy` is configured. Behind a
+reverse proxy, set the narrowest correct trust policy before registering Sitegate so the public
+HTTPS scheme is reconstructed without trusting arbitrary forwarding headers:
+
+```ts
+app.set("trust proxy", "loopback");
+app.use(sitegate());
+```
+
+For a topology that cannot use Express's proxy policy, pass a validated application-owned public
+origin as the adapter's second argument: `sitegate(config, { origin: "https://preview.example" })`.
+Do not derive this override from an untrusted request header.
+
+## Fastify
+
+Register the plugin on the root instance before protected routes or nested plugins:
+
+```ts
+import Fastify from "fastify";
+import { sitegate } from "sitegate/fastify";
+
+const app = Fastify();
+
+await app.register(sitegate);
+app.get("/private", async () => ({ private: true }));
+```
+
+The adapter supports Fastify 5.8.5 through Fastify 5. It runs in `onRequest`, before Fastify parses
+the body, and consumes only Sitegate login submissions. Root registration protects later nested
+plugins as well as root routes. It preserves Fastify error handling and response serialization,
+then locks Sitegate's security headers through the final response write.
+
+Configure Fastify's `trustProxy` only for the actual proxy topology if public HTTPS is terminated
+upstream. An application-owned `origin` string, URL, or callback can instead be supplied in the
+Sitegate plugin options; it must resolve to an HTTP(S) origin with no credentials, path, query, or
+fragment.
+
 ## Configuration
 
 ```ts
@@ -215,8 +275,8 @@ export const proxy = sitegate({
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `password` | `SITEGATE_PASSWORD` in Next.js/Vite adapters | Required when enabled; at least 1 Unicode character. The application owner controls password-strength policy. |
-| `secret` | `SITEGATE_SECRET` in Next.js/Vite adapters | Required when enabled; at least 32 UTF-8 bytes. Keep separate from the password. |
+| `password` | `SITEGATE_PASSWORD` in framework adapters | Required when enabled; at least 1 Unicode character. The application owner controls password-strength policy. |
+| `secret` | `SITEGATE_SECRET` in framework adapters | Required when enabled; at least 32 UTF-8 bytes. Keep separate from the password. |
 | `enabled` | `true` | Makes protection easy to remove or scope by environment. |
 | `sessionDuration` | 8 hours | Absolute lifetime; between 60 seconds and 30 days. |
 | `loginPath` | `/_sitegate/login` | Built-in GET/POST login endpoint. |
@@ -262,9 +322,8 @@ const gate = createSitegate({
 const response = await gate.handle(request, () => application.handle(request));
 ```
 
-The core exposes typed path policy helpers and a `LoginAttemptLimiter` interface so Express, Hono,
-Fastify, Nuxt, Workers, or production Vite hosts can integrate without rewriting session or login
-logic.
+The core exposes typed path policy helpers and a `LoginAttemptLimiter` interface so additional
+servers and edge runtimes can integrate without rewriting session or login logic.
 
 ## Lightweight rate-limit choices
 
@@ -419,16 +478,17 @@ cross-site navigation is more important for your preview.
 ```bash
 pnpm install
 pnpm check
+pnpm compat:express
+pnpm compat:fastify
 pnpm compat:next
 pnpm compat:vite
 ```
 
 The check pipeline runs linting, formatting verification, strict TypeScript, unit/integration/security
 tests with coverage, a clean declaration build, and an npm tarball dry run. The compatibility command
-installs isolated consumers for the latest Next.js 14, 15, and 16 patch releases, type-checks their
-required file conventions, and runs their adapters. The Vite compatibility command does the same
-for Vite 6, 7, and 8; the main integration suite starts a real Vite server and exercises the full
-login/session flow.
+installs isolated consumers for Express 4 and 5, Fastify 5, the latest Next.js 14, 15, and 16 patch
+releases, and Vite 6, 7, and 8. The main integration suite exercises real servers, login/session
+flows, bounded bodies, error paths, nested plugins, and final security-header enforcement.
 
 ## License
 
