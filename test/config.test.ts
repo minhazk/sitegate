@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSitegate, SitegateConfigurationError } from "../src/index.js";
+import { createSitegate, SitegateConfigurationError, type SitegateConfig } from "../src/index.js";
 import { submitLogin, TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
 
 afterEach(() => {
@@ -63,6 +63,27 @@ describe("configuration", () => {
   ])("rejects unsafe config: %s", (config, field) => {
     expect(() => createSitegate(config)).toThrowError(SitegateConfigurationError);
     expect(() => createSitegate(config)).toThrow(String(field));
+  });
+
+  it.each([
+    ["enabled", { password: "", secret: "", enabled: 0 }],
+    ["secureCookies", { password: TEST_PASSWORD, secret: TEST_SECRET, secureCookies: "false" }],
+    ["sameSite", { password: TEST_PASSWORD, secret: TEST_SECRET, sameSite: "none" }],
+    ["rateLimit", { password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: true }],
+    ["rateLimit", { password: TEST_PASSWORD, secret: TEST_SECRET, rateLimit: [] }],
+    [
+      "rateLimit.trustProxy",
+      {
+        password: TEST_PASSWORD,
+        secret: TEST_SECRET,
+        rateLimit: { trustProxy: "true" },
+      },
+    ],
+  ])("rejects untyped runtime config for %s", (field, config) => {
+    expect(() => createSitegate(config as unknown as SitegateConfig)).toThrowError(
+      SitegateConfigurationError,
+    );
+    expect(() => createSitegate(config as unknown as SitegateConfig)).toThrow(String(field));
   });
 
   it("accepts and authenticates a one-character shared password", async () => {

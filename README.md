@@ -27,7 +27,7 @@ application using server-only configuration.
 - Protected responses are marked `private, no-store`, varied on cookies, and excluded from compliant
   search indexing.
 - The core uses standard `Request` and `Response`; adapters cover Next.js 14–16, Vite 6–8,
-  Express 4–5, Fastify 5, Hono 4, and Cloudflare Workers.
+  Express 4–5, Fastify 5, Hono 4, Cloudflare Workers, H3 1, and Nuxt 3–4.
 
 ## Install
 
@@ -36,13 +36,15 @@ pnpm add sitegate
 ```
 
 Sitegate's Node.js adapters and development tooling require Node.js 24 LTS. Its optional framework
-peers support Next.js 14.2–16, Vite 6–8, Express 4.22.2–5, Fastify 5.8.5–5, and Hono 4. The
-framework-neutral core and Cloudflare adapter use web-standard runtime APIs.
+peers support Next.js 14.2–16, Vite 6–8, Express 4.22.2–5, Fastify 5.8.5–5, and Hono 4. H3 support
+starts at 1.15.11, and the Nuxt adapter covers Nuxt 3.21.11 through Nuxt 4 on Nitro 2.13.4–2.
+The framework-neutral core and Cloudflare adapter use web-standard runtime APIs.
 
 `jose` and the small `fastify-plugin` registration helper are Sitegate's direct runtime
-dependencies. Frameworks are optional peer dependencies supplied by the consuming application;
-package-manager audits may still display them in paths beneath Sitegate because peers participate
-in the host's resolved dependency graph.
+dependencies. Frameworks are supplied by the consuming application; direct adapter imports are
+declared as optional peers, while the Nuxt plugin uses a structural boundary so it does not add a
+second Nitro/H3 type graph. Package-manager audits may still display optional peers in paths beneath
+Sitegate because peers participate in the host's resolved dependency graph.
 
 ## Minimal Next.js setup
 
@@ -340,6 +342,106 @@ export default {
 } satisfies ExportedHandler<CloudflareBindings>;
 ```
 
+## H3
+
+Install Sitegate on the H3 1 application before exposing it through a listener. Routes may be added
+before or after installation:
+
+```ts
+import { createApp, eventHandler } from "h3";
+import { sitegate } from "sitegate/h3";
+
+const app = createApp();
+
+sitegate(app, {
+  password: process.env["SITEGATE_PASSWORD"]!,
+  secret: process.env["SITEGATE_SECRET"]!,
+});
+app.use("/private", eventHandler(() => ({ private: true })));
+```
+
+The adapter targets H3 1.15.11 on Node-compatible servers. It locks Sitegate as the application's
+outer handler, before H3 `onRequest` hooks and the route stack. It uses the original request target,
+reads only a bounded Sitegate login submission, leaves every other request stream untouched, and
+locks the raw response so later H3 handlers cannot remove the cache, cookie-variance, or indexing
+policy. A second installation or a later attempt to replace the outer handler fails visibly. H3 2
+currently has a different release-candidate API and is not covered by this adapter.
+
+Behind TLS termination, pass a fixed application-owned public origin as the third argument:
+
+```ts
+sitegate(
+  app,
+  {
+    password: process.env["SITEGATE_PASSWORD"]!,
+    secret: process.env["SITEGATE_SECRET"]!,
+  },
+  { origin: "https://preview.example" },
+);
+```
+
+Do not derive it from an arbitrary Host or forwarding header. H3 WebSocket upgrades resolve outside
+the locked HTTP application handler and require a separate authentication boundary.
+
+## Nuxt
+
+Use a Nitro server plugin—not client route middleware or ordinary `server/middleware`—so Sitegate
+can lock itself around Nitro request hooks, route-rule redirects/proxies, and every protected server
+response. Put private defaults in `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  runtimeConfig: {
+    sitegate: {
+      password: "",
+      secret: "",
+    },
+  },
+});
+```
+
+Supply production values as `NUXT_SITEGATE_PASSWORD` and `NUXT_SITEGATE_SECRET`, then add
+`server/plugins/99.sitegate.ts`:
+
+```ts
+import { sitegate } from "sitegate/nuxt";
+
+export default sitegate(
+  () => {
+    const runtime = useRuntimeConfig();
+    return {
+      password: runtime.sitegate.password,
+      secret: runtime.sitegate.secret,
+      rateLimit: false,
+    };
+  },
+  { origin: "https://preview.example" },
+);
+```
+
+The adapter supports Nuxt 3.21.11 through Nuxt 4 on Nitro 2.13.4–2 with the Node server preset. The
+zero-argument configuration source is resolved independently for every request. Keep it limited to
+private runtime/binding lookup; it runs outside Nitro request hooks so those hooks cannot precede
+authentication. Sitegate locks its handler around Nitro's complete H3 application, including
+`request` hooks, route-rule redirects/proxies, scanned middleware, and routes. A second installation
+or later handler replacement fails at startup.
+
+`rateLimit` is required: use `false` only when accepting unthrottled login attempts, or supply a
+limiter marked `scope: "shared"` whose operations really coordinate every process and region.
+Set `trustProxy: true` only when the deployment edge removes incoming forwarding headers and writes
+the client address itself; string environment values are rejected rather than treated as truthy.
+
+The resolver receives no request, so it cannot consume Sitegate's login stream. Do not
+prerender/generate protected content, and do not place sensitive files in
+`public/` when the host can serve that directory before Nitro. WebSocket upgrades are outside this
+HTTP boundary. Use the outer Cloudflare Worker adapter for a Worker-hosted application instead of
+assuming the Nitro Node plugin protects platform routes that bypass its server.
+
+Terminal Sitegate responses run before Nitro request/response hooks and Nitro's request async
+context by design. Sitegate event callbacks remain observed and use a host-supplied request
+lifecycle when one is already available, but they must stay best-effort; use upstream access logs
+when every denied request must be recorded independently of application hooks.
+
 ## Configuration
 
 ```ts
@@ -371,8 +473,8 @@ export const proxy = sitegate({
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `password` | `SITEGATE_PASSWORD` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 1 Unicode character. Hono, Workers, and the core require an explicit value. The application owner controls password-strength policy. |
-| `secret` | `SITEGATE_SECRET` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 32 UTF-8 bytes. Hono, Workers, and the core require an explicit value. Keep separate from the password. |
+| `password` | `SITEGATE_PASSWORD` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 1 Unicode character. Hono, Workers, H3, Nuxt, and the core require an explicit value. The application owner controls password-strength policy. |
+| `secret` | `SITEGATE_SECRET` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 32 UTF-8 bytes. Hono, Workers, H3, Nuxt, and the core require an explicit value. Keep separate from the password. |
 | `enabled` | `true` | Makes protection easy to remove or scope by environment. |
 | `sessionDuration` | 8 hours | Absolute lifetime; between 60 seconds and 30 days. |
 | `loginPath` | `/_sitegate/login` | Built-in GET/POST login endpoint. |
@@ -543,8 +645,9 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
    bypass URLs where possible.
 7. Verify `Set-Cookie`, `Cache-Control`, `Vary`, and `X-Robots-Tag` on the deployed response.
 8. Keep authorization inside the application wherever users have different permissions.
-9. Keep Next.js/OpenNext/SST patched and rerun unauthenticated page, API, login, and logout checks
-   after framework or adapter upgrades.
+9. Keep the host framework and runtime patched. For Nuxt, verify the Nitro server plugin still runs
+   before route rules and that no protected output is prerendered or served directly from `public/`.
+   Rerun unauthenticated page, API, login, and logout checks after upgrades.
 
 ## Troubleshooting
 
@@ -561,7 +664,10 @@ Confirm it matches the statically analyzable `config.matcher` in `proxy.ts` or `
 is not in `excludedPaths`. Sitegate cannot protect a request for which Next.js never invokes the
 interception function.
 
-For Hono, confirm Sitegate is the first root middleware. For Cloudflare assets, confirm
+For H3, confirm Sitegate installed and locked the application handler before the listener was
+exposed. For Hono, confirm it is the first root middleware.
+For Nuxt, use `sitegate/nuxt` from `server/plugins`, not client or scanned server middleware, and
+confirm the request reaches the Nitro Node server. For Cloudflare assets, confirm
 `assets.run_worker_first` is enabled and the public hostname routes through this Worker.
 
 **The Vite development server is protected, but my deployed static site is public**  
@@ -580,18 +686,21 @@ pnpm install
 pnpm check
 pnpm compat:express
 pnpm compat:fastify
+pnpm compat:h3
 pnpm compat:hono
 pnpm compat:cloudflare-workers
 pnpm compat:next
+pnpm compat:nuxt
 pnpm compat:vite
 ```
 
 The check pipeline runs linting, formatting verification, strict TypeScript, unit/integration/security
 tests with coverage, a clean declaration build, and an npm tarball dry run. The compatibility command
-installs isolated consumers for Express 4 and 5, Fastify 5, Hono 4.0 and current Hono 4, the latest
-Next.js 14, 15, and 16 patch releases, Vite 6, 7, and 8, and the current Cloudflare Workers toolchain.
-The main integration suite exercises real servers and workerd, login/session flows, bounded bodies,
-error paths, nested plugins, static assets, and final security-header enforcement.
+installs isolated consumers for Express 4 and 5, Fastify 5, H3 1.15, Hono 4.0 and current Hono 4,
+Nuxt 3 and 4 on Nitro 2, the latest Next.js 14, 15, and 16 patch releases, Vite 6, 7, and 8, and the
+current Cloudflare Workers toolchain. The main integration suite exercises real servers and workerd,
+login/session flows, bounded bodies, error paths, nested plugins, static assets, route-rule order,
+and final security-header enforcement.
 
 ## License
 

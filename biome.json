@@ -5,6 +5,8 @@
       "**",
       "!dist",
       "!coverage",
+      "!**/.nuxt",
+      "!**/.output",
       "!node_modules",
       "!compat/cloudflare-workers/worker-configuration.d.ts"
     ]

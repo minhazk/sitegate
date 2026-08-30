@@ -52,7 +52,7 @@ describe("shared Node request conversion", () => {
     expect(converted.url).toBe("https://public.example.test/private");
   });
 
-  it("ignores HTTP/2 pseudoheaders when constructing Fetch headers", async () => {
+  it("uses HTTP/2 authority while omitting pseudoheaders from Fetch headers", async () => {
     const converted = await nodeWebRequest(
       incoming({
         headers: {
@@ -60,13 +60,27 @@ describe("shared Node request conversion", () => {
           ":method": "GET",
           ":path": "/private",
           ":scheme": "https",
-          host: "preview.example.test",
         } as IncomingHttpHeaders,
         url: "/private",
       }),
       gate,
     );
+    expect(converted.url).toBe("http://preview.example.test/private");
     expect([...converted.headers.keys()].some((name) => name.startsWith(":"))).toBe(false);
+  });
+
+  it("rejects contradictory Host and HTTP/2 authority values", async () => {
+    await expect(
+      nodeWebRequest(
+        incoming({
+          headers: {
+            ":authority": "authority.example.test",
+            host: "host.example.test",
+          } as IncomingHttpHeaders,
+        }),
+        gate,
+      ),
+    ).rejects.toBeInstanceOf(SitegateNodeRequestError);
   });
 
   it.each([

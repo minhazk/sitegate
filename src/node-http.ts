@@ -47,7 +47,19 @@ function requestHeaders(source: IncomingHttpHeaders): Headers {
 function socketOrigin(request: IncomingMessage): string {
   const encrypted =
     "encrypted" in request.socket && (request.socket as { encrypted?: boolean }).encrypted === true;
-  const host = request.headers.host;
+  const hostHeader = request.headers.host;
+  const authorityHeader = request.headers[":authority"];
+  if (Array.isArray(hostHeader) || Array.isArray(authorityHeader)) {
+    throw new SitegateNodeRequestError("The request authority is malformed.");
+  }
+  if (
+    hostHeader !== undefined &&
+    authorityHeader !== undefined &&
+    hostHeader.toLowerCase() !== authorityHeader.toLowerCase()
+  ) {
+    throw new SitegateNodeRequestError("The request Host and authority headers disagree.");
+  }
+  const host = hostHeader ?? authorityHeader;
   if (host === undefined) throw new SitegateNodeRequestError("The request Host header is missing.");
   return `${encrypted ? "https" : "http"}://${host}`;
 }

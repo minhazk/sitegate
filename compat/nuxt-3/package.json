@@ -1,0 +1,17 @@
+{
+  "name": "sitegate-nuxt-3-compat",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "check": "pnpm --dir ../.. pack --out compat/nuxt-3/sitegate-compat.tgz && pnpm install --lockfile=false --ignore-scripts && pnpm exec nuxt prepare && tsc --noEmit -p .nuxt/tsconfig.server.json && pnpm exec nuxt build && node smoke.mjs"
+  },
+  "dependencies": {
+    "nuxt": "3.21.11",
+    "sitegate": "file:./sitegate-compat.tgz"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

@@ -142,6 +142,38 @@ responses in place to preserve their identity and extensions, with a clone only 
 network response exposes immutable headers. The fixture uses `@cloudflare/vitest-plugin` 1.1.2,
 Wrangler 4.127.1, generated Workers bindings, real workerd tests, and a production-bundle dry run.
 
+## H3 and Nuxt guidance
+
+Current Nuxt 3.21.11 and 4.5.2 both use Nitro 2.13.4 and H3 1.15.11. H3's current `latest` npm tag
+is a breaking 2.0 release candidate with a different event/middleware API, so Sitegate deliberately
+targets the maintained H3 1 line and does not claim H3 2 compatibility.
+
+H3 1's [event-handler guidance](https://v1.h3.dev/guide/event-handler) defines an ordered handler
+stack in which a middleware-style handler continues by returning no value. H3 runs its application
+`onRequest` callback before that stack, however, so even the first middleware cannot be the complete
+authentication boundary. Sitegate instead replaces and locks the H3 application's outer handler.
+It authenticates the original raw target before `onRequest` or stack code, consumes only a bounded
+login body, and protects allowed Node responses at the raw `ServerResponse` boundary.
+
+Nitro's [routing documentation](https://v2.nitro.build/guide/routing) shows that route rules can
+redirect or proxy requests, while the published Nitro 2 runtime registers that route-rule handler
+before scanned server middleware. A normal Nuxt `server/middleware` file could consequently be
+skipped by a terminating rule. Sitegate instead returns a Nitro server plugin that replaces and
+immutably locks `nitro.h3App.handler` around the complete application. This also places the gate
+before Nitro `request` hooks, which H3 invokes before its stack. The H3 application-handler boundary
+is pinned to Nitro 2 and guarded by Nuxt 3/4 production build and runtime fixtures.
+
+Nuxt's [server-directory guidance](https://nuxt.com/docs/4.x/directory-structure/server) separates
+server plugins from routes/middleware and documents private runtime configuration. Sitegate calls a
+zero-argument private-configuration source for each request and requires `rateLimit: false` or a
+shared limiter. Event promises are registered with an already-available request lifecycle and remain
+observed best-effort otherwise. The resolver receives no event or body, preserving the login stream
+and preventing Nitro request helpers from moving ahead of the gate.
+
+The Nuxt adapter targets the Nitro Node server preset. Prerendered output, host-served `public/`
+files, WebSocket upgrades, provider routes outside Nitro, and H3 2 remain separate boundaries rather
+than implied coverage.
+
 ## Security guidance
 
 The design maps to these primary references:

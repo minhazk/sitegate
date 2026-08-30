@@ -62,6 +62,10 @@ deployment account, and server environment are trusted.
 | Worker isolate-local throttling | The Workers adapter requires either explicit unthrottled operation or a caller-supplied limiter attested as shared; it never silently creates per-request or per-isolate rate history. |
 | Worker binding and lifecycle confusion | Worker configuration is resolved for each request without mutating shared objects; the exact environment and context continue downstream, and event work is attached to that request's `waitUntil`. |
 | Worker response-extension loss | Mutable application responses are secured in place, retaining Worker WebSocket and encoding behavior; immutable network responses use a standards-compatible clone. |
+| H3 middleware bypass | The H3 1 adapter immutably wraps the application handler, validates the original Node target, and gates before `onRequest` hooks or stack handlers; allowed responses retain raw-header locks. |
+| Nitro route-rule/hook bypass | The Nuxt plugin immutably wraps Nitro's complete H3 handler before `request` hooks, route-rule redirect/proxy handlers, scanned middleware, and routes; duplicate installation fails visibly. |
+| Nuxt per-request limiter reset | Dynamic Nuxt configuration requires explicit unthrottled operation or a caller-attested shared limiter, so no memory limiter is recreated for every login. |
+| Nuxt resolver/lifecycle confusion | The zero-argument resolver cannot consume the request; failures lock secure error headers and rethrow without continuation, while event work uses an available request lifecycle or remains observed best-effort. |
 | OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
 | Release artifact substitution | Validation/build runs without OIDC, produces one checksummed immutable tarball, and transfers it to an isolated publisher that has no checkout and publishes only that tarball with lifecycle scripts disabled. |
 
@@ -106,6 +110,24 @@ deployment account, and server environment are trusted.
   cannot prove that the limiter's storage and atomic operations really span every relevant isolate.
 - Fetched responses with immutable headers must be cloned to add mandatory security headers. Test
   any specialized upstream runtime behavior that depends on response identity or host extensions.
+- Install the H3 adapter on the application before exposing its listener. It locks the outer handler,
+  and later replacement attempts fail visibly. Configure a fixed public HTTPS origin when TLS
+  terminates upstream; arbitrary Host/forwarding values are not a trusted origin policy. H3
+  WebSocket upgrades resolve outside this HTTP handler and need a separate gate.
+- The Nuxt adapter targets Nitro 2's Node server stack. Client route middleware, prerendered/static
+  output, host-served `public/` files, WebSocket upgrades, and provider routes that do not execute
+  Nitro remain outside the boundary.
+- Nuxt configuration resolvers receive no event and must remain limited to private runtime/binding
+  lookup. Resolver failure remains fail-closed.
+- Terminal Nuxt denials occur before Nitro request/response hooks and request async context. Event
+  callbacks are observed best-effort and use a request lifecycle only when the host supplied one
+  before the H3 handler; upstream logging is required for independent denial auditing.
+- Replacing and locking `nitro.h3App.handler` is tied to the verified Nitro 2/H3 1 layout and must be
+  retested when either runtime changes. Host code that answers before the H3 application remains
+  outside the boundary.
+- The Nuxt adapter treats `scope: "shared"` as a caller attestation and cannot prove atomic or global
+  coordination. Do not install both an outer provider gate and the Nuxt gate unless two login layers
+  are intentional.
 - Sitegate does not add HSTS because TLS topology and preload/subdomain policy belong to the host.
 - Release security still depends on repository/tag governance, GitHub environment protection, and
   the npm trusted-publisher identity accepting only the intended workflow and environment.
@@ -129,6 +151,10 @@ deployment account, and server environment are trusted.
 - [Cloudflare Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
 - [Cloudflare execution context](https://developers.cloudflare.com/workers/runtime-apis/context/)
 - [Cloudflare static assets](https://developers.cloudflare.com/workers/static-assets/binding/)
+- [H3 1 event handlers](https://v1.h3.dev/guide/event-handler)
+- [Nitro 2 routing](https://v2.nitro.build/guide/routing)
+- [Nitro 2 plugins](https://v2.nitro.build/guide/plugins)
+- [Nuxt 4 server directory](https://nuxt.com/docs/4.x/directory-structure/server)
 - [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [pnpm publish](https://pnpm.io/cli/publish)
 - [Web Crypto `SubtleCrypto.verify`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify)

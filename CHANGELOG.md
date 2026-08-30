@@ -6,6 +6,27 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-30
+
+### Added
+
+- Add an H3 1.15 adapter for Node-compatible servers with bounded login-body conversion, untouched
+  downstream streams, final raw-response header locking, and isolated compatibility coverage.
+- Add a Nuxt 3–4 / Nitro 2 server-plugin adapter with per-request private configuration resolution,
+  best-effort event work, shared-limiter enforcement, and production-server compatibility fixtures.
+
+### Security
+
+- Lock H3 and Nuxt Sitegate handlers around the complete H3 application so `onRequest`/Nitro
+  request hooks, route-rule redirects/proxies, scanned middleware, and routes cannot run first.
+- Require Nuxt deployments to explicitly disable throttling or attest that their limiter is shared,
+  preventing a fresh per-request memory limiter from silently resetting attempt history.
+- Lock security headers across H3/Nitro continuations, terminal responses, and error handling while
+  rejecting malformed raw request targets before protected handlers execute.
+- Detect duplicate Nitro plugin installation and keep resolver/configuration failures fail-closed.
+- Strictly reject malformed untyped enablement, cookie-policy, rate-limit, and proxy-trust values
+  instead of coercing a security configuration.
+
 ## [0.4.0] - 2026-08-30
 
 ### Added
@@ -177,7 +198,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/minhazk/sitegate/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/minhazk/sitegate/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/minhazk/sitegate/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/minhazk/sitegate/compare/v0.2.2...v0.2.3
