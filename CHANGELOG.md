@@ -6,6 +6,30 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-30
+
+### Added
+
+- Add a Hono 4 middleware adapter with original-request handling, final-response replacement,
+  streaming/error coverage, and isolated Hono 4.0 and current Hono compatibility fixtures.
+- Add a Cloudflare Workers fetch wrapper with binding-derived per-request configuration, exact
+  request/environment/context forwarding, and real workerd integration coverage.
+- Add `cloudflareClientId` for secret-keyed client pseudonyms derived from Cloudflare's
+  edge-controlled visitor-address header.
+
+### Security
+
+- Require Workers callers to explicitly disable login throttling or provide a limiter marked as
+  shared; process-local rate history is rejected at both the type and runtime boundaries.
+- Reject generic proxy-header trust in the Workers adapter and provide a secret-keyed helper for
+  Cloudflare's edge-controlled visitor address instead.
+- Register best-effort asynchronous security events with the request's `waitUntil` context without
+  mutating shared configuration or mixing concurrent request lifecycles.
+- Harden mutable responses in place so Cloudflare WebSocket and manual-encoding extensions survive,
+  while retaining a clone fallback for responses with immutable headers.
+- Document first/root Hono registration and `assets.run_worker_first` as required routing controls
+  that prevent application or static-asset paths from bypassing the gate.
+
 ## [0.3.0] - 2026-08-30
 
 ### Added
@@ -153,7 +177,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/minhazk/sitegate/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/minhazk/sitegate/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/minhazk/sitegate/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/minhazk/sitegate/compare/v0.2.1...v0.2.2

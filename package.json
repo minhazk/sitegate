@@ -1,6 +1,6 @@
 {
   "name": "sitegate",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A secure, self-hosted password gate for staging and preview websites.",
   "keywords": [
     "password-protection",
@@ -10,6 +10,8 @@
     "vite",
     "express",
     "fastify",
+    "hono",
+    "cloudflare-workers",
     "middleware",
     "security"
   ],
@@ -56,6 +58,14 @@
       "types": "./dist/fastify.d.ts",
       "import": "./dist/fastify.js"
     },
+    "./hono": {
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js"
+    },
+    "./cloudflare-workers": {
+      "types": "./dist/cloudflare-workers.d.ts",
+      "import": "./dist/cloudflare-workers.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {
@@ -71,6 +81,8 @@
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:run && pnpm build && pnpm pack:check",
     "compat:express": "pnpm build && pnpm --dir compat/express-4 check && pnpm --dir compat/express-5 check",
     "compat:fastify": "pnpm build && pnpm --dir compat/fastify-5 check",
+    "compat:hono": "pnpm build && pnpm --dir compat/hono-4.0 check && pnpm --dir compat/hono-4.13 check",
+    "compat:cloudflare-workers": "pnpm build && pnpm --dir compat/cloudflare-workers check",
     "compat:next": "pnpm build && pnpm --dir compat/next-14 check && pnpm --dir compat/next-15 check && pnpm --dir compat/next-16 check",
     "compat:vite": "pnpm build && pnpm --dir compat/vite-6 check && pnpm --dir compat/vite-7 check && pnpm --dir compat/vite-8 check",
     "format": "biome format --write .",
@@ -88,6 +100,7 @@
   "peerDependencies": {
     "express": ">=4.22.2 <6",
     "fastify": ">=5.8.5 <6",
+    "hono": ">=4.0.0 <5",
     "next": ">=14.2.0 <17",
     "vite": ">=6.0.0 <9"
   },
@@ -96,6 +109,9 @@
       "optional": true
     },
     "fastify": {
+      "optional": true
+    },
+    "hono": {
       "optional": true
     },
     "next": {
@@ -112,6 +128,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "express": "5.2.1",
     "fastify": "5.12.1",
+    "hono": "4.13.5",
     "next": "16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -1,0 +1,17 @@
+{
+  "name": "sitegate-hono-4-13-compat",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "check": "pnpm install --ignore-workspace --lockfile=false --ignore-scripts && tsc && node smoke.mjs"
+  },
+  "dependencies": {
+    "hono": "4.13.5",
+    "sitegate": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

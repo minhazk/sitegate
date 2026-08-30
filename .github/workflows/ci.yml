@@ -37,5 +37,7 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm compat:express
       - run: pnpm compat:fastify
+      - run: pnpm compat:hono
+      - run: pnpm compat:cloudflare-workers
       - run: pnpm compat:next
       - run: pnpm compat:vite

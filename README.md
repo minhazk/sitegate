@@ -27,7 +27,7 @@ application using server-only configuration.
 - Protected responses are marked `private, no-store`, varied on cookies, and excluded from compliant
   search indexing.
 - The core uses standard `Request` and `Response`; adapters cover Next.js 14–16, Vite 6–8,
-  Express 4–5, and Fastify 5.
+  Express 4–5, Fastify 5, Hono 4, and Cloudflare Workers.
 
 ## Install
 
@@ -35,8 +35,9 @@ application using server-only configuration.
 pnpm add sitegate
 ```
 
-Sitegate requires Node.js 24 LTS. Its optional framework peers support Next.js 14.2–16, Vite 6–8,
-Express 4.22.2–5, and Fastify 5.8.5–5.
+Sitegate's Node.js adapters and development tooling require Node.js 24 LTS. Its optional framework
+peers support Next.js 14.2–16, Vite 6–8, Express 4.22.2–5, Fastify 5.8.5–5, and Hono 4. The
+framework-neutral core and Cloudflare adapter use web-standard runtime APIs.
 
 `jose` and the small `fastify-plugin` registration helper are Sitegate's direct runtime
 dependencies. Frameworks are optional peer dependencies supplied by the consuming application;
@@ -244,6 +245,101 @@ upstream. An application-owned `origin` string, URL, or callback can instead be 
 Sitegate plugin options; it must resolve to an HTTP(S) origin with no credentials, path, query, or
 fragment.
 
+## Hono
+
+Register Sitegate first and at the root, before validators, body readers, other middleware, and
+routes:
+
+```ts
+import { Hono } from "hono";
+import { sitegate } from "sitegate/hono";
+
+const app = new Hono();
+
+app.use(
+  "*",
+  sitegate({
+    password: process.env["SITEGATE_PASSWORD"]!,
+    secret: process.env["SITEGATE_SECRET"]!,
+  }),
+);
+app.get("/private", (context) => context.text("Private preview"));
+```
+
+The adapter supports Hono 4.0 through Hono 4. It passes Hono's original `Request` into Sitegate,
+calls the downstream chain exactly once after authentication, and replaces the completed response
+so later route headers cannot restore public caching or indexing. Registration order is part of the
+security boundary: a route or middleware registered first can return without ever reaching
+Sitegate.
+
+This fixed-config adapter is runtime-neutral. On Cloudflare Workers, wrap the complete `app.fetch`
+handler with the Cloudflare adapter shown below instead. That resolves binding-only secrets per
+request, enforces an explicit distributed rate-limit choice, and registers asynchronous events with
+the request's execution context. On any other multi-isolate Hono runtime, explicitly provide a
+shared limiter or set `rateLimit: false`; do not rely on the process-local default.
+
+## Cloudflare Workers
+
+Resolve secrets from generated bindings for every request and export an object with a `fetch`
+property:
+
+```ts
+import { createSitegateWorker } from "sitegate/cloudflare-workers";
+
+export default {
+  fetch: createSitegateWorker<CloudflareBindings>(
+    (env) => ({
+      password: env.SITEGATE_PASSWORD,
+      secret: env.SITEGATE_SECRET,
+      rateLimit: false,
+    }),
+    (request, env) => env.ASSETS.fetch(request),
+  ),
+} satisfies ExportedHandler<CloudflareBindings>;
+```
+
+`rateLimit` is deliberately required. Set it to `false` only when you explicitly accept
+unthrottled login attempts, or provide a limiter whose `scope` is `"shared"`; the adapter rejects a
+process-local limiter because isolates, regions, and cold starts cannot share its history. A shared
+limiter can use `(request) => cloudflareClientId(request, env.SITEGATE_SECRET)` as `getClientId` to
+create a secret-keyed pseudonym from Cloudflare's edge-controlled `CF-Connecting-IP` value without
+trusting a client-supplied forwarding header or storing the address itself. The Workers adapter
+rejects `trustProxy: true`; use an explicit `getClientId` instead.
+
+Store production values with `wrangler secret put SITEGATE_PASSWORD` and
+`wrangler secret put SITEGATE_SECRET`. Declare the required binding names in Wrangler, then run
+`pnpm exec wrangler types` and use the generated `CloudflareBindings` interface rather than writing
+one by hand. Do not put secret values in source, `wrangler.jsonc`, or committed development files.
+
+When a Worker serves static assets, set `assets.run_worker_first` so an asset match cannot bypass
+Sitegate. The wrapper forwards the exact request, bindings, and context to the application; it does
+not use `passThroughOnException`. Promise-returning `onEvent` work is registered with that request's
+`waitUntil` context and remains best-effort. Sitegate-created and application-created mutable
+responses retain Worker response extensions such as WebSocket attachments and manual encoding while
+their security headers are hardened. A fetched response with immutable headers uses a
+standards-compatible clone, so test specialized upstream response behavior in the deployed runtime.
+
+Hono on Workers uses the same outer boundary:
+
+```ts
+import { Hono } from "hono";
+import { createSitegateWorker } from "sitegate/cloudflare-workers";
+
+const app = new Hono<{ Bindings: CloudflareBindings }>();
+app.get("/private", (context) => context.text("Private preview"));
+
+export default {
+  fetch: createSitegateWorker<CloudflareBindings>(
+    (env) => ({
+      password: env.SITEGATE_PASSWORD,
+      secret: env.SITEGATE_SECRET,
+      rateLimit: false,
+    }),
+    (request, env, context) => app.fetch(request, env, context),
+  ),
+} satisfies ExportedHandler<CloudflareBindings>;
+```
+
 ## Configuration
 
 ```ts
@@ -275,8 +371,8 @@ export const proxy = sitegate({
 
 | Option | Default | Notes |
 | --- | --- | --- |
-| `password` | `SITEGATE_PASSWORD` in framework adapters | Required when enabled; at least 1 Unicode character. The application owner controls password-strength policy. |
-| `secret` | `SITEGATE_SECRET` in framework adapters | Required when enabled; at least 32 UTF-8 bytes. Keep separate from the password. |
+| `password` | `SITEGATE_PASSWORD` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 1 Unicode character. Hono, Workers, and the core require an explicit value. The application owner controls password-strength policy. |
+| `secret` | `SITEGATE_SECRET` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 32 UTF-8 bytes. Hono, Workers, and the core require an explicit value. Keep separate from the password. |
 | `enabled` | `true` | Makes protection easy to remove or scope by environment. |
 | `sessionDuration` | 8 hours | Absolute lifetime; between 60 seconds and 30 days. |
 | `loginPath` | `/_sitegate/login` | Built-in GET/POST login endpoint. |
@@ -437,7 +533,8 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
 2. Generate independent, high-entropy password and signing-secret values.
 3. On Next.js, configure `matcher` so every route needing protection executes Proxy or Middleware.
    On other hosts, register the gate before static files and application routes. Test a page, API,
-   static asset, image, and route handler without cookies.
+   static asset, image, and route handler without cookies. On Cloudflare, enable
+   `assets.run_worker_first`.
 4. Confirm the CDN cannot serve a previously cached private response before the gate runs. Purge
    old public objects when enabling Sitegate on an existing deployment.
 5. Choose the login-attempt mode explicitly: the default for one process, an application-owned
@@ -464,6 +561,9 @@ Confirm it matches the statically analyzable `config.matcher` in `proxy.ts` or `
 is not in `excludedPaths`. Sitegate cannot protect a request for which Next.js never invokes the
 interception function.
 
+For Hono, confirm Sitegate is the first root middleware. For Cloudflare assets, confirm
+`assets.run_worker_first` is enabled and the public hostname routes through this Worker.
+
 **The Vite development server is protected, but my deployed static site is public**  
 That is expected: the Vite plugin runs in the development and local preview servers, not in static
 build output. Add the framework-neutral gate to the deployed site's server/edge request boundary or
@@ -480,15 +580,18 @@ pnpm install
 pnpm check
 pnpm compat:express
 pnpm compat:fastify
+pnpm compat:hono
+pnpm compat:cloudflare-workers
 pnpm compat:next
 pnpm compat:vite
 ```
 
 The check pipeline runs linting, formatting verification, strict TypeScript, unit/integration/security
 tests with coverage, a clean declaration build, and an npm tarball dry run. The compatibility command
-installs isolated consumers for Express 4 and 5, Fastify 5, the latest Next.js 14, 15, and 16 patch
-releases, and Vite 6, 7, and 8. The main integration suite exercises real servers, login/session
-flows, bounded bodies, error paths, nested plugins, and final security-header enforcement.
+installs isolated consumers for Express 4 and 5, Fastify 5, Hono 4.0 and current Hono 4, the latest
+Next.js 14, 15, and 16 patch releases, Vite 6, 7, and 8, and the current Cloudflare Workers toolchain.
+The main integration suite exercises real servers and workerd, login/session flows, bounded bodies,
+error paths, nested plugins, static assets, and final security-header enforcement.
 
 ## License
 

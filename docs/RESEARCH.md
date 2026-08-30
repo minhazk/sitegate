@@ -1,8 +1,9 @@
 # Design research
 
-Research was completed on 11 August 2026 before Sitegate's initial architecture was finalized. The
-review covered current platform/security guidance and the published artifacts of representative
-packages; Sitegate is an independent implementation.
+Research was completed on 11 August 2026 before Sitegate's initial architecture was finalized and
+expanded on 30 August 2026 for the provider adapters. The review covered current platform/security
+guidance and the published artifacts of representative packages; Sitegate is an independent
+implementation.
 
 ## Existing package review
 
@@ -94,6 +95,52 @@ Fastify's [plugin guide](https://fastify.dev/docs/latest/Guides/Plugins-Guide/) 
 encapsulation model. The exported adapter uses `fastify-plugin` so registration on the root instance
 protects later routes and nested plugins. The isolated consumer pins Fastify 5.12.1, while the peer
 range begins at the verified 5.8.5 API floor.
+
+## Hono guidance
+
+Hono's [middleware guide](https://hono.dev/docs/guides/middleware) defines ordered middleware and
+documents clearing `c.res` before replacing a response when previous headers must not be merged.
+Sitegate uses that exact replacement sequence after the downstream chain completes, because a
+normal Hono assignment could merge a route's public cache or indexing headers over the gate's final
+policy. Hono's [request API](https://hono.dev/docs/api/request#raw) exposes the original web-standard
+`Request`, which keeps core path and bounded-body handling independent of Hono's routed path view.
+
+The adapter is generic over Hono's `Env`, imports framework types only, and is smoke-tested against
+Hono 4.0.0 and 4.13.5. The static adapter must be registered first and root-scoped. For Hono running
+on Cloudflare, the outer Workers wrapper is the supported binding-derived configuration and
+execution-lifecycle boundary.
+
+## Cloudflare Workers guidance
+
+Cloudflare's [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
+warn against mutable request-specific global state because isolates can serve concurrent requests.
+The Sitegate wrapper consequently resolves configuration and creates derived gate state per request,
+copies rather than mutates shared configuration, and forwards the exact request, environment, and
+context objects to the application.
+
+The [execution-context API](https://developers.cloudflare.com/workers/runtime-apis/context/)
+requires background work to be passed to `waitUntil`. Sitegate binds each request's best-effort
+event promise to that context while retaining its receiver and handling both synchronous and
+asynchronous telemetry failures. The wrapper never calls `passThroughOnException`, so resolver,
+authentication, and downstream errors cannot fall through to an alternate origin path.
+
+Workers are distributed across isolates and regions, so creating a gate per request with the core's
+default memory limiter would reset login history on every submission. The Workers contract instead
+requires `rateLimit: false` or a limiter declaring `scope: "shared"`. The marker is a caller
+attestation, while atomic coordination remains the implementation's responsibility.
+
+Cloudflare's [bindings guidance](https://developers.cloudflare.com/workers/runtime-apis/bindings/)
+and [secret guidance](https://developers.cloudflare.com/workers/configuration/secrets/) support
+per-request `env` access and secret storage outside source. The compatibility fixture uses required
+secret binding names, generated Wrangler types, ephemeral test-only values, and no committed secret
+values. Its asset configuration runs the Worker before the binding so static files cannot bypass
+the gate.
+
+The current [Response API](https://developers.cloudflare.com/workers/runtime-apis/response/)
+includes WebSocket and manual body-encoding extensions. Sitegate secures mutable application
+responses in place to preserve their identity and extensions, with a clone only when a standards
+network response exposes immutable headers. The fixture uses `@cloudflare/vitest-plugin` 1.1.2,
+Wrangler 4.127.1, generated Workers bindings, real workerd tests, and a production-bundle dry run.
 
 ## Security guidance
 

@@ -1,0 +1,19 @@
+{
+  "name": "sitegate-cloudflare-workers-compat",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "check": "pnpm install --ignore-workspace --lockfile=false --ignore-scripts && wrangler types worker-configuration.d.ts --env-interface CloudflareBindings && tsc --noEmit && vitest run && wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "sitegate": "file:../.."
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.2",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.127.1"
+  }
+}

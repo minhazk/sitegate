@@ -58,6 +58,10 @@ deployment account, and server environment are trusted.
 | Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
 | Node adapter bypass | Express, Fastify, and Vite reconstruct a validated HTTP(S) URL from the raw target, reject malformed or ambiguous targets before continuation, and consume only bounded login bodies. |
 | Downstream header weakening | Node response setters, removals, direct `writeHead` calls, and late Fastify send hooks cannot replace Sitegate's cache, cookie-variance, or anti-indexing headers. |
+| Hono middleware bypass | The Hono adapter uses the original raw request and must be registered first and root-scoped; it clears Hono's previous response before installing the final secured response. |
+| Worker isolate-local throttling | The Workers adapter requires either explicit unthrottled operation or a caller-supplied limiter attested as shared; it never silently creates per-request or per-isolate rate history. |
+| Worker binding and lifecycle confusion | Worker configuration is resolved for each request without mutating shared objects; the exact environment and context continue downstream, and event work is attached to that request's `waitUntil`. |
+| Worker response-extension loss | Mutable application responses are secured in place, retaining Worker WebSocket and encoding behavior; immutable network responses use a standards-compatible clone. |
 | OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
 | Release artifact substitution | Validation/build runs without OIDC, produces one checksummed immutable tarball, and transfers it to an isolated publisher that has no checkout and publishes only that tarball with lifecycle scripts disabled. |
 
@@ -93,6 +97,15 @@ deployment account, and server environment are trusted.
   or use a fixed application-owned origin, never an arbitrary client-supplied forwarding value.
 - Register Express before body parsers/static middleware and register Fastify on the root instance
   before protected routes. Earlier middleware or host routing remains outside Sitegate's boundary.
+- Register Hono Sitegate middleware first and root-scoped. A route or outer middleware that returns
+  before it reaches Sitegate is outside the boundary; on Workers, use the outer Worker wrapper when
+  secrets or lifecycle work come from request-scoped bindings and execution context.
+- Cloudflare static assets must run the Worker first. A platform route or asset binding configured
+  to answer before the Worker is outside Sitegate's boundary.
+- The Workers adapter treats a caller-supplied `scope: "shared"` marker as an attestation; Sitegate
+  cannot prove that the limiter's storage and atomic operations really span every relevant isolate.
+- Fetched responses with immutable headers must be cloned to add mandatory security headers. Test
+  any specialized upstream runtime behavior that depends on response identity or host extensions.
 - Sitegate does not add HSTS because TLS topology and preload/subdomain policy belong to the host.
 - Release security still depends on repository/tag governance, GitHub environment protection, and
   the npm trusted-publisher identity accepting only the intended workflow and environment.
@@ -112,6 +125,10 @@ deployment account, and server environment are trusted.
 - [Express behind proxies](https://expressjs.com/en/guide/behind-proxies.html)
 - [Fastify hooks](https://fastify.dev/docs/latest/Reference/Hooks/)
 - [Fastify plugins](https://fastify.dev/docs/latest/Guides/Plugins-Guide/)
+- [Hono middleware](https://hono.dev/docs/guides/middleware)
+- [Cloudflare Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
+- [Cloudflare execution context](https://developers.cloudflare.com/workers/runtime-apis/context/)
+- [Cloudflare static assets](https://developers.cloudflare.com/workers/static-assets/binding/)
 - [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
 - [pnpm publish](https://pnpm.io/cli/publish)
 - [Web Crypto `SubtleCrypto.verify`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify)
