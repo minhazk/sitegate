@@ -73,6 +73,36 @@ function assertInternalPath(value: string, field: string): void {
 }
 
 export function resolveConfig(config: SitegateConfig): ResolvedConfig {
+  if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
+    throw new SitegateConfigurationError("enabled must be a boolean.");
+  }
+  if (
+    config.secureCookies !== undefined &&
+    config.secureCookies !== "auto" &&
+    typeof config.secureCookies !== "boolean"
+  ) {
+    throw new SitegateConfigurationError('secureCookies must be true, false, or "auto".');
+  }
+  if (config.sameSite !== undefined && config.sameSite !== "lax" && config.sameSite !== "strict") {
+    throw new SitegateConfigurationError('sameSite must be "lax" or "strict".');
+  }
+  if (
+    config.rateLimit !== undefined &&
+    config.rateLimit !== false &&
+    (typeof config.rateLimit !== "object" ||
+      config.rateLimit === null ||
+      Array.isArray(config.rateLimit))
+  ) {
+    throw new SitegateConfigurationError("rateLimit must be false or an options object.");
+  }
+  if (
+    config.rateLimit !== undefined &&
+    config.rateLimit !== false &&
+    config.rateLimit.trustProxy !== undefined &&
+    typeof config.rateLimit.trustProxy !== "boolean"
+  ) {
+    throw new SitegateConfigurationError("rateLimit.trustProxy must be a boolean.");
+  }
   const enabled = config.enabled ?? true;
   const loginPath = config.loginPath ?? "/_sitegate/login";
   const logoutPath = config.logoutPath ?? "/_sitegate/logout";

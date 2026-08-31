@@ -5,8 +5,7 @@ export const SECURITY_HEADERS = {
   "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
 } as const;
 
-export function secureResponse(response: Response): Response {
-  const headers = new Headers(response.headers);
+function secureHeaders(headers: Headers): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
   const vary = headers.get("Vary");
   if (vary === null) headers.set("Vary", "Cookie");
@@ -16,6 +15,19 @@ export function secureResponse(response: Response): Response {
   ) {
     headers.set("Vary", `${vary}, Cookie`);
   }
+}
+
+export function secureResponse(response: Response): Response {
+  try {
+    secureHeaders(response.headers);
+    return response;
+  } catch {
+    // Network responses can have immutable headers. Cloning is the standards-compatible fallback;
+    // mutable runtime responses stay intact above, preserving extensions such as Worker WebSockets.
+  }
+
+  const headers = new Headers(response.headers);
+  secureHeaders(headers);
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

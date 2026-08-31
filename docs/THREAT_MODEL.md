@@ -18,6 +18,7 @@ around it.
 - The session signing secret.
 - Authenticated session tokens.
 - Availability of the login endpoint.
+- Integrity and provenance of the published npm tarball.
 
 ## Attacker capabilities
 
@@ -46,14 +47,27 @@ deployment account, and server environment are trusted.
 | Session fixation | A fresh random session ID and new signed token are issued after authentication; the pre-session CSRF cookie is deleted. |
 | Stale sessions after password rotation | The session signing key is derived from both the independent secret and current password. |
 | Cookie theft from script | `HttpOnly`; `Secure` on HTTPS; host-only `__Host-` names; no `Domain`; `Path=/`. |
-| CSRF login/logout | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login token; state changes use POST. |
-| Open redirect | Only normalized root-relative paths without authorities, backslashes, whitespace, or controls are accepted. |
-| Brute force | Rolling per-client and global attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
+| Login CSRF | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login-form token. |
+| Logout CSRF | POST-only endpoint plus `SameSite=Strict`, Fetch Metadata, and exact Origin/Referer validation. Logout does not accept the login-form token as a substitute for source validation. |
+| Path-policy ambiguity | Encoded input is decoded to a bounded depth and ambiguous syntax is rejected both before and after URL normalization; exclusions must match raw and canonical representations. |
+| Open redirect | Only root-relative destinations that remain local after final URL normalization and reparsing are accepted. |
+| Brute force | Rolling per-client and global queue-based attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
 | Sensitive caching | `Cache-Control: private, no-store, max-age=0` and `Vary: Cookie` on all responses while enabled. |
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
 | Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
 | Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
+| Node adapter bypass | Express, Fastify, and Vite reconstruct a validated HTTP(S) URL from the raw target, reject malformed or ambiguous targets before continuation, and consume only bounded login bodies. |
+| Downstream header weakening | Node response setters, removals, direct `writeHead` calls, and late Fastify send hooks cannot replace Sitegate's cache, cookie-variance, or anti-indexing headers. |
+| Hono middleware bypass | The Hono adapter uses the original raw request and must be registered first and root-scoped; it clears Hono's previous response before installing the final secured response. |
+| Worker isolate-local throttling | The Workers adapter requires either explicit unthrottled operation or a caller-supplied limiter attested as shared; it never silently creates per-request or per-isolate rate history. |
+| Worker binding and lifecycle confusion | Worker configuration is resolved for each request without mutating shared objects; the exact environment and context continue downstream, and event work is attached to that request's `waitUntil`. |
+| Worker response-extension loss | Mutable application responses are secured in place, retaining Worker WebSocket and encoding behavior; immutable network responses use a standards-compatible clone. |
+| H3 middleware bypass | The H3 1 adapter immutably wraps the application handler, validates the original Node target, and gates before `onRequest` hooks or stack handlers; allowed responses retain raw-header locks. |
+| Nitro route-rule/hook bypass | The Nuxt plugin immutably wraps Nitro's complete H3 handler before `request` hooks, route-rule redirect/proxy handlers, scanned middleware, and routes; duplicate installation fails visibly. |
+| Nuxt per-request limiter reset | Dynamic Nuxt configuration requires explicit unthrottled operation or a caller-attested shared limiter, so no memory limiter is recreated for every login. |
+| Nuxt resolver/lifecycle confusion | The zero-argument resolver cannot consume the request; failures lock secure error headers and rethrow without continuation, while event work uses an available request lifecycle or remains observed best-effort. |
 | OpenNext redirect handling | The Next.js adapter resolves Sitegate and continuation `Location` headers against the incoming request URL before returning them to the host. |
+| Release artifact substitution | Validation/build runs without OIDC, produces one checksummed immutable tarball, and transfers it to an isolated publisher that has no checkout and publishes only that tarball with lifecycle scripts disabled. |
 
 ## Residual risks and deliberate limitations
 
@@ -64,6 +78,9 @@ deployment account, and server environment are trusted.
 - The default in-memory limiter is neither durable nor globally coordinated. Recognized serverless
   runtimes reject it; scaled deployments must configure a coordinated control or explicitly disable
   rate limiting and accept the residual risk.
+- Without a trusted client identity, the default limiter intentionally shares one 200-attempt
+  budget across all requesters. One requester can temporarily exhaust new-login capacity; existing
+  sessions remain valid. Trust forwarding headers only behind an edge that overwrites them.
 - When `rateLimit: false`, login submissions have no brute-force or compute-abuse throttle. Sitegate
   still validates origin, CSRF, body size, and passwords, but the host explicitly accepts the
   remaining availability and password-guessing risk.
@@ -79,7 +96,41 @@ deployment account, and server environment are trusted.
 - The Vite plugin protects HTTP requests in development and local preview only. A static Vite build
   has no authentication server, and HMR WebSocket traffic is outside the plugin's HTTP middleware
   boundary.
+- Express and Fastify trust the host framework's resolved public protocol and host. Incorrect proxy
+  trust can produce insecure cookies or source-check failures; configure the actual proxy topology
+  or use a fixed application-owned origin, never an arbitrary client-supplied forwarding value.
+- Register Express before body parsers/static middleware and register Fastify on the root instance
+  before protected routes. Earlier middleware or host routing remains outside Sitegate's boundary.
+- Register Hono Sitegate middleware first and root-scoped. A route or outer middleware that returns
+  before it reaches Sitegate is outside the boundary; on Workers, use the outer Worker wrapper when
+  secrets or lifecycle work come from request-scoped bindings and execution context.
+- Cloudflare static assets must run the Worker first. A platform route or asset binding configured
+  to answer before the Worker is outside Sitegate's boundary.
+- The Workers adapter treats a caller-supplied `scope: "shared"` marker as an attestation; Sitegate
+  cannot prove that the limiter's storage and atomic operations really span every relevant isolate.
+- Fetched responses with immutable headers must be cloned to add mandatory security headers. Test
+  any specialized upstream runtime behavior that depends on response identity or host extensions.
+- Install the H3 adapter on the application before exposing its listener. It locks the outer handler,
+  and later replacement attempts fail visibly. Configure a fixed public HTTPS origin when TLS
+  terminates upstream; arbitrary Host/forwarding values are not a trusted origin policy. H3
+  WebSocket upgrades resolve outside this HTTP handler and need a separate gate.
+- The Nuxt adapter targets Nitro 2's Node server stack. Client route middleware, prerendered/static
+  output, host-served `public/` files, WebSocket upgrades, and provider routes that do not execute
+  Nitro remain outside the boundary.
+- Nuxt configuration resolvers receive no event and must remain limited to private runtime/binding
+  lookup. Resolver failure remains fail-closed.
+- Terminal Nuxt denials occur before Nitro request/response hooks and request async context. Event
+  callbacks are observed best-effort and use a request lifecycle only when the host supplied one
+  before the H3 handler; upstream logging is required for independent denial auditing.
+- Replacing and locking `nitro.h3App.handler` is tied to the verified Nitro 2/H3 1 layout and must be
+  retested when either runtime changes. Host code that answers before the H3 application remains
+  outside the boundary.
+- The Nuxt adapter treats `scope: "shared"` as a caller attestation and cannot prove atomic or global
+  coordination. Do not install both an outer provider gate and the Nuxt gate unless two login layers
+  are intentional.
 - Sitegate does not add HSTS because TLS topology and preload/subdomain policy belong to the host.
+- Release security still depends on repository/tag governance, GitHub environment protection, and
+  the npm trusted-publisher identity accepting only the intended workflow and environment.
 
 ## Security design references
 
@@ -92,6 +143,20 @@ deployment account, and server environment are trusted.
 - [Next.js authentication guidance](https://nextjs.org/docs/app/guides/authentication)
 - [Vite Plugin API](https://vite.dev/guide/api-plugin.html)
 - [Vite static deployment guidance](https://vite.dev/guide/static-deploy.html)
+- [Express middleware guide](https://expressjs.com/en/guide/using-middleware.html)
+- [Express behind proxies](https://expressjs.com/en/guide/behind-proxies.html)
+- [Fastify hooks](https://fastify.dev/docs/latest/Reference/Hooks/)
+- [Fastify plugins](https://fastify.dev/docs/latest/Guides/Plugins-Guide/)
+- [Hono middleware](https://hono.dev/docs/guides/middleware)
+- [Cloudflare Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
+- [Cloudflare execution context](https://developers.cloudflare.com/workers/runtime-apis/context/)
+- [Cloudflare static assets](https://developers.cloudflare.com/workers/static-assets/binding/)
+- [H3 1 event handlers](https://v1.h3.dev/guide/event-handler)
+- [Nitro 2 routing](https://v2.nitro.build/guide/routing)
+- [Nitro 2 plugins](https://v2.nitro.build/guide/plugins)
+- [Nuxt 4 server directory](https://nuxt.com/docs/4.x/directory-structure/server)
+- [GitHub Actions OIDC reference](https://docs.github.com/en/actions/reference/security/oidc)
+- [pnpm publish](https://pnpm.io/cli/publish)
 - [Web Crypto `SubtleCrypto.verify`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify)
 
 This design uses established platform primitives and `jose`; it does not define a new cryptographic

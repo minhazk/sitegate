@@ -6,9 +6,24 @@ interface MemoryRateLimiterOptions {
   windowSeconds: number;
 }
 
+interface TimestampQueue {
+  values: number[];
+  head: number;
+}
+
+interface GlobalAttempt {
+  clientKey: string;
+  timestamp: number;
+  previous: GlobalAttempt | undefined;
+  next: GlobalAttempt | undefined;
+}
+
 export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): LoginAttemptLimiter {
-  const attempts = new Map<string, number[]>();
-  let globalAttempts: Array<{ clientKey: string; timestamp: number }> = [];
+  const attempts = new Map<string, TimestampQueue>();
+  const globalByClient = new Map<string, Set<GlobalAttempt>>();
+  let globalHead: GlobalAttempt | undefined;
+  let globalTail: GlobalAttempt | undefined;
+  let globalActiveCount = 0;
   const windowMs = options.windowSeconds * 1000;
   const maxBuckets = 10_000;
   let attemptsRecorded = 0;
@@ -19,27 +34,63 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
     return "client:overflow";
   }
 
-  function recent(key: string, now: number): number[] {
-    const cutoff = now - windowMs;
-    const values = (attempts.get(key) ?? []).filter((timestamp) => timestamp > cutoff);
-    if (values.length === 0) attempts.delete(key);
-    else attempts.set(key, values);
-    return values;
+  function compact(queue: TimestampQueue): void {
+    if (queue.head < 128 || queue.head * 2 < queue.values.length) return;
+    queue.values.splice(0, queue.head);
+    queue.head = 0;
   }
 
-  function decision(values: number[], maximum: number, now: number): RateLimitDecision {
-    if (values.length < maximum) return { limited: false };
-    const oldest = values[0] ?? now;
+  function recent(key: string, now: number): TimestampQueue {
+    const cutoff = now - windowMs;
+    const queue = attempts.get(key) ?? { values: [], head: 0 };
+    while ((queue.values[queue.head] ?? Number.POSITIVE_INFINITY) <= cutoff) queue.head += 1;
+    compact(queue);
+    if (queue.head === queue.values.length) {
+      queue.values.length = 0;
+      queue.head = 0;
+      attempts.delete(key);
+    }
+    return queue;
+  }
+
+  function decision(
+    count: number,
+    oldest: number | undefined,
+    maximum: number,
+    now: number,
+  ): RateLimitDecision {
+    if (count < maximum) return { limited: false };
     return {
       limited: true,
-      retryAfterSeconds: Math.max(60, Math.ceil((oldest + windowMs - now) / (60 * 1000)) * 60),
+      retryAfterSeconds: Math.max(
+        60,
+        Math.ceil(((oldest ?? now) + windowMs - now) / (60 * 1000)) * 60,
+      ),
     };
+  }
+
+  function unlinkGlobal(attempt: GlobalAttempt): void {
+    if (attempt.previous === undefined) globalHead = attempt.next;
+    else attempt.previous.next = attempt.next;
+    if (attempt.next === undefined) globalTail = attempt.previous;
+    else attempt.next.previous = attempt.previous;
+
+    const records = globalByClient.get(attempt.clientKey);
+    records?.delete(attempt);
+    if (records?.size === 0) globalByClient.delete(attempt.clientKey);
+    attempt.previous = undefined;
+    attempt.next = undefined;
+    globalActiveCount -= 1;
+  }
+
+  function expireGlobal(now: number): void {
+    const cutoff = now - windowMs;
+    while (globalHead !== undefined && globalHead.timestamp <= cutoff) unlinkGlobal(globalHead);
   }
 
   function cleanAll(now: number): void {
     for (const key of attempts.keys()) recent(key, now);
-    const cutoff = now - windowMs;
-    globalAttempts = globalAttempts.filter(({ timestamp }) => timestamp > cutoff);
+    expireGlobal(now);
   }
 
   return {
@@ -48,26 +99,47 @@ export function createMemoryRateLimiter(options: MemoryRateLimiterOptions): Logi
       attemptsRecorded += 1;
       if (attemptsRecorded % 128 === 0) cleanAll(now);
       const key = clientKey(clientId);
-      const clientValues = recent(key, now);
-      const cutoff = now - windowMs;
-      globalAttempts = globalAttempts.filter(({ timestamp }) => timestamp > cutoff);
-      const globalValues = globalAttempts.map(({ timestamp }) => timestamp);
-      const client = decision(clientValues, options.maxAttempts, now);
-      const global = decision(globalValues, options.globalMaxAttempts, now);
+      const clientQueue = recent(key, now);
+      expireGlobal(now);
+      const client = decision(
+        clientQueue.values.length - clientQueue.head,
+        clientQueue.values[clientQueue.head],
+        options.maxAttempts,
+        now,
+      );
+      const global = decision(
+        globalActiveCount,
+        globalHead?.timestamp,
+        options.globalMaxAttempts,
+        now,
+      );
       if (client.limited || global.limited) {
         return {
           limited: true,
           retryAfterSeconds: Math.max(client.retryAfterSeconds ?? 1, global.retryAfterSeconds ?? 1),
         };
       }
-      attempts.set(key, [...clientValues, now]);
-      globalAttempts.push({ clientKey: key, timestamp: now });
+      clientQueue.values.push(now);
+      attempts.set(key, clientQueue);
+      const globalAttempt: GlobalAttempt = {
+        clientKey: key,
+        timestamp: now,
+        previous: globalTail,
+        next: undefined,
+      };
+      if (globalTail === undefined) globalHead = globalAttempt;
+      else globalTail.next = globalAttempt;
+      globalTail = globalAttempt;
+      const clientGlobalAttempts = globalByClient.get(key) ?? new Set<GlobalAttempt>();
+      clientGlobalAttempts.add(globalAttempt);
+      globalByClient.set(key, clientGlobalAttempts);
+      globalActiveCount += 1;
       return { limited: false };
     },
     reset(clientId) {
       const key = clientKey(clientId);
       attempts.delete(key);
-      globalAttempts = globalAttempts.filter(({ clientKey: recordedKey }) => recordedKey !== key);
+      for (const attempt of globalByClient.get(key) ?? []) unlinkGlobal(attempt);
     },
   };
 }

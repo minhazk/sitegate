@@ -1,7 +1,15 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "files": {
-    "includes": ["**", "!dist", "!coverage", "!node_modules"]
+    "includes": [
+      "**",
+      "!dist",
+      "!coverage",
+      "!**/.nuxt",
+      "!**/.output",
+      "!node_modules",
+      "!compat/cloudflare-workers/worker-configuration.d.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

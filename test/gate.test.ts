@@ -489,7 +489,29 @@ describe("login and logout security", () => {
 
   it("never redirects to an external origin after login", async () => {
     const gate = makeGate();
-    const response = await submitLogin(gate, TEST_PASSWORD, "//evil.test/path");
+    for (const destination of [
+      "//evil.test/path",
+      "/.//evil.test/path",
+      "/safe/..//evil.test/path",
+      "/%2e//evil.test/path",
+    ]) {
+      const response = await submitLogin(gate, TEST_PASSWORD, destination);
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/");
+    }
+  });
+
+  it("never redirects an authenticated login-page visit to a normalized external origin", async () => {
+    const gate = makeGate();
+    const login = await submitLogin(gate, TEST_PASSWORD);
+    const session = cookieValue(login, "__Host-sitegate_session");
+    const destination = "/.//evil.test/phish";
+    const response = await gate.handle(
+      new Request(`${BASE_URL}${gate.loginPath}?next=${encodeURIComponent(destination)}`, {
+        headers: { Cookie: `__Host-sitegate_session=${encodeURIComponent(session)}` },
+      }),
+      blocked,
+    );
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe("/");
   });

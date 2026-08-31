@@ -2,6 +2,10 @@ node_modules/
 .pnpm-store/
 dist/
 coverage/
+.nuxt/
+.output/
+.wrangler/
+/compat/cloudflare-workers/worker-configuration.d.ts
 *.tgz
 .DS_Store
 .env

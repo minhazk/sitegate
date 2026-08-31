@@ -1,6 +1,6 @@
 {
   "name": "sitegate",
-  "version": "0.2.2",
+  "version": "0.5.0",
   "description": "A secure, self-hosted password gate for staging and preview websites.",
   "keywords": [
     "password-protection",
@@ -8,6 +8,13 @@
     "preview",
     "nextjs",
     "vite",
+    "express",
+    "fastify",
+    "hono",
+    "cloudflare-workers",
+    "h3",
+    "nuxt",
+    "nitro",
     "middleware",
     "security"
   ],
@@ -46,6 +53,30 @@
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"
     },
+    "./express": {
+      "types": "./dist/express.d.ts",
+      "import": "./dist/express.js"
+    },
+    "./fastify": {
+      "types": "./dist/fastify.d.ts",
+      "import": "./dist/fastify.js"
+    },
+    "./hono": {
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js"
+    },
+    "./cloudflare-workers": {
+      "types": "./dist/cloudflare-workers.d.ts",
+      "import": "./dist/cloudflare-workers.js"
+    },
+    "./h3": {
+      "types": "./dist/h3.d.ts",
+      "import": "./dist/h3.js"
+    },
+    "./nuxt": {
+      "types": "./dist/nuxt.d.ts",
+      "import": "./dist/nuxt.js"
+    },
     "./package.json": "./package.json"
   },
   "engines": {
@@ -59,7 +90,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:run && pnpm build && pnpm pack:check",
+    "compat:express": "pnpm build && pnpm --dir compat/express-4 check && pnpm --dir compat/express-5 check",
+    "compat:fastify": "pnpm build && pnpm --dir compat/fastify-5 check",
+    "compat:h3": "pnpm build && pnpm --dir compat/h3-1.15 check",
+    "compat:hono": "pnpm build && pnpm --dir compat/hono-4.0 check && pnpm --dir compat/hono-4.13 check",
+    "compat:cloudflare-workers": "pnpm build && pnpm --dir compat/cloudflare-workers check",
     "compat:next": "pnpm build && pnpm --dir compat/next-14 check && pnpm --dir compat/next-15 check && pnpm --dir compat/next-16 check",
+    "compat:nuxt": "pnpm build && pnpm --dir compat/nuxt-3 check && pnpm --dir compat/nuxt-4 check",
     "compat:vite": "pnpm build && pnpm --dir compat/vite-6 check && pnpm --dir compat/vite-7 check && pnpm --dir compat/vite-8 check",
     "format": "biome format --write .",
     "format:check": "biome format .",
@@ -70,13 +107,30 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "fastify-plugin": "^6.0.0",
     "jose": "^6.2.8"
   },
   "peerDependencies": {
+    "express": ">=4.22.2 <6",
+    "fastify": ">=5.8.5 <6",
+    "h3": ">=1.15.11 <2",
+    "hono": ">=4.0.0 <5",
     "next": ">=14.2.0 <17",
     "vite": ">=6.0.0 <9"
   },
   "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "h3": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    },
     "next": {
       "optional": true
     },
@@ -86,8 +140,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
+    "@types/express": "5.0.6",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "express": "5.2.1",
+    "fastify": "5.12.1",
+    "h3": "1.15.11",
+    "hono": "4.13.5",
     "next": "16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

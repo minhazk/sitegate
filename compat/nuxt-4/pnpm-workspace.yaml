@@ -1,0 +1,11 @@
+packages:
+  - .
+
+lockfile: false
+verifyDepsBeforeRun: false
+
+overrides:
+  h3: 1.15.11
+  nitropack: 2.13.4
+
+onlyBuiltDependencies: []
