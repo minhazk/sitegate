@@ -6,7 +6,7 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-08-30
+## [0.5.0] - 2026-08-31
 
 ### Added
 
