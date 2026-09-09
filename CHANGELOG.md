@@ -6,6 +6,15 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-09
+
+### Fixed
+
+- Allow Node.js 20 and newer without an upper version limit instead of restricting consumers to
+  Node.js 24. Individual framework requirements still apply.
+- Add built-package authentication and Node HTTP compatibility checks across Node.js 20, 22, 24,
+  and 26, including the minimum supported release.
+
 ## [0.5.0] - 2026-08-31
 
 ### Added
@@ -198,7 +207,8 @@ All notable changes to Sitegate will be documented here. The project follows
 
 - Require Node.js 24 LTS and run CI and release workflows on its supported action runtime.
 
-[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/minhazk/sitegate/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/minhazk/sitegate/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/minhazk/sitegate/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/minhazk/sitegate/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/minhazk/sitegate/compare/v0.2.3...v0.3.0

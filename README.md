@@ -35,7 +35,11 @@ application using server-only configuration.
 pnpm add sitegate
 ```
 
-Sitegate's Node.js adapters and development tooling require Node.js 24 LTS. Its optional framework
+Sitegate requires Node.js 20 or newer, with no upper version limit. Individual frameworks may
+require a newer Node.js version; follow the requirements of the framework version you install.
+The repository's development and release tooling uses Node.js 24 LTS and pinned pnpm.
+Runtime compatibility checks cover Node.js 20, 22, 24, and 26, including Node.js 20.0.0 and 22.0.0.
+Its optional framework
 peers support Next.js 14.2–16, Vite 6–8, Express 4.22.2–5, Fastify 5.8.5–5, and Hono 4. H3 support
 starts at 1.15.11, and the Nuxt adapter covers Nuxt 3.21.11 through Nuxt 4 on Nitro 2.13.4–2.
 The framework-neutral core and Cloudflare adapter use web-standard runtime APIs.
