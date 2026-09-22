@@ -6,7 +6,7 @@ import {
   type Http2ServerResponse,
 } from "node:http2";
 import type { AddressInfo } from "node:net";
-import { createApp, eventHandler, readRawBody, toNodeListener, toWebHandler, type App } from "h3";
+import { type App, createApp, eventHandler, readRawBody, toNodeListener, toWebHandler } from "h3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sitegate } from "../src/h3.js";
 import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
@@ -304,7 +304,7 @@ describe("H3 adapter", () => {
         Origin: baseUrl,
         "Sec-Fetch-Site": "same-origin",
       },
-      body: "x".repeat(4097),
+      body: "x".repeat(16385),
     });
     expect(oversized.status).toBe(413);
     expect(loginRouteCalls).toBe(0);

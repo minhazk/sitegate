@@ -1,3 +1,4 @@
+import { canonicalPathname } from "./paths.js";
 import type {
   PathMatcher,
   SitegateBranding,
@@ -5,11 +6,11 @@ import type {
   SitegateSameSite,
   SitegateStrings,
 } from "./types.js";
-import { canonicalPathname } from "./paths.js";
 
 export interface ResolvedConfig {
   password: string;
   secret: string;
+  publicOrigin: string | undefined;
   enabled: boolean;
   sessionDuration: number;
   loginPath: string;
@@ -32,8 +33,19 @@ const DEFAULT_STRINGS: Required<SitegateStrings> = {
   submitLabel: "Continue",
   footerText: "Protected by Sitegate",
   incorrectPassword: "That password is not correct.",
-  expiredForm: "Login form expired. Reload the page and try again.",
+  expiredForm: "This sign-in page expired. Enter your password again to continue.",
   rateLimited: "Too many login attempts. Try again later.",
+  invalidRequest:
+    "We could not verify this sign-in request. Enter your password below to try again. If this keeps happening, ask the site owner to check the public URL and proxy settings.",
+  cookiesRequired:
+    "Cookies are needed to sign in. Allow cookies for this site, then enter your password again.",
+  unavailable: "Sign-in is temporarily unavailable. Please try again shortly.",
+  showPassword: "Show password",
+  hidePassword: "Hide password",
+  signingIn: "Signing in…",
+  capsLock: "Caps Lock is on",
+  retryAfter: "Try again in {seconds} seconds.",
+  invalidForm: "We could not read this sign-in form. Enter your password below to try again.",
 };
 
 export class SitegateConfigurationError extends Error {
@@ -106,6 +118,26 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
   const enabled = config.enabled ?? true;
   const loginPath = config.loginPath ?? "/_sitegate/login";
   const logoutPath = config.logoutPath ?? "/_sitegate/logout";
+  let publicOrigin: string | undefined;
+  if (config.publicOrigin !== undefined) {
+    try {
+      const url = new URL(config.publicOrigin);
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.pathname !== "/" ||
+        url.search ||
+        url.hash
+      )
+        throw new Error("Not an origin");
+      publicOrigin = url.origin;
+    } catch {
+      throw new SitegateConfigurationError(
+        "publicOrigin must be an HTTP(S) origin without a path, query, credentials, or hash, for example https://preview.example.com.",
+      );
+    }
+  }
 
   assertInternalPath(loginPath, "loginPath");
   assertInternalPath(logoutPath, "logoutPath");
@@ -114,14 +146,22 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
   }
 
   if (enabled) {
-    if ([...config.password].length < 1) {
+    if (typeof config.password !== "string" || config.password.length < 1) {
       throw new SitegateConfigurationError(
-        "password must contain at least 1 character when Sitegate is enabled.",
+        "password must contain at least 1 character when Sitegate is enabled. Set SITEGATE_PASSWORD in your server environment or pass password in the configuration.",
       );
     }
-    if (new TextEncoder().encode(config.secret).byteLength < 32) {
+    if (config.password.length > 1024) {
       throw new SitegateConfigurationError(
-        "secret must contain at least 32 UTF-8 bytes when Sitegate is enabled.",
+        "password must not exceed 1024 characters (UTF-16 code units), the login form limit.",
+      );
+    }
+    if (
+      typeof config.secret !== "string" ||
+      new TextEncoder().encode(config.secret).byteLength < 32
+    ) {
+      throw new SitegateConfigurationError(
+        "secret must contain at least 32 UTF-8 bytes when Sitegate is enabled. Generate one with openssl rand -base64 32 and save it as SITEGATE_SECRET. Use the same value on every instance; do not generate it per request.",
       );
     }
     if (config.password === config.secret) {
@@ -199,8 +239,9 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
     );
   }
   return {
-    password: config.password,
-    secret: config.secret,
+    password: config.password ?? "",
+    secret: config.secret ?? "",
+    publicOrigin,
     enabled,
     sessionDuration,
     loginPath,
@@ -225,6 +266,15 @@ export function resolveConfig(config: SitegateConfig): ResolvedConfig {
       incorrectPassword: config.strings?.incorrectPassword ?? DEFAULT_STRINGS.incorrectPassword,
       expiredForm: config.strings?.expiredForm ?? DEFAULT_STRINGS.expiredForm,
       rateLimited: config.strings?.rateLimited ?? DEFAULT_STRINGS.rateLimited,
+      invalidRequest: config.strings?.invalidRequest ?? DEFAULT_STRINGS.invalidRequest,
+      invalidForm: config.strings?.invalidForm ?? DEFAULT_STRINGS.invalidForm,
+      cookiesRequired: config.strings?.cookiesRequired ?? DEFAULT_STRINGS.cookiesRequired,
+      unavailable: config.strings?.unavailable ?? DEFAULT_STRINGS.unavailable,
+      showPassword: config.strings?.showPassword ?? DEFAULT_STRINGS.showPassword,
+      hidePassword: config.strings?.hidePassword ?? DEFAULT_STRINGS.hidePassword,
+      signingIn: config.strings?.signingIn ?? DEFAULT_STRINGS.signingIn,
+      capsLock: config.strings?.capsLock ?? DEFAULT_STRINGS.capsLock,
+      retryAfter: config.strings?.retryAfter ?? DEFAULT_STRINGS.retryAfter,
     },
     onEvent: config.onEvent,
     now: config.now ?? Date.now,

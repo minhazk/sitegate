@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSitegate, SitegateConfigurationError, type SitegateConfig } from "../src/index.js";
+import { createSitegate, type SitegateConfig, SitegateConfigurationError } from "../src/index.js";
 import { submitLogin, TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
 
 afterEach(() => {

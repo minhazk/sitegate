@@ -47,15 +47,18 @@ deployment account, and server environment are trusted.
 | Session fixation | A fresh random session ID and new signed token are issued after authentication; the pre-session CSRF cookie is deleted. |
 | Stale sessions after password rotation | The session signing key is derived from both the independent secret and current password. |
 | Cookie theft from script | `HttpOnly`; `Secure` on HTTPS; host-only `__Host-` names; no `Domain`; `Path=/`. |
-| Login CSRF | `SameSite=Strict` by default; Fetch Metadata and exact Origin/Referer validation; signed, cookie-bound, expiring login-form token. |
+| Login CSRF | `SameSite=Strict` by default; exact Origin/Referer checks; opaque `Origin: null` accepted only with same-origin, document-navigation Fetch Metadata; signed, cookie-bound, expiring form token remains mandatory. |
 | Logout CSRF | POST-only endpoint plus `SameSite=Strict`, Fetch Metadata, and exact Origin/Referer validation. Logout does not accept the login-form token as a substitute for source validation. |
 | Path-policy ambiguity | Encoded input is decoded to a bounded depth and ambiguous syntax is rejected both before and after URL normalization; exclusions must match raw and canonical representations. |
 | Open redirect | Only root-relative destinations that remain local after final URL normalization and reparsing are accepted. |
 | Brute force | Rolling per-client and global queue-based attempt buckets; successful reservations clear from both; pluggable shared limiter; generic `429`. |
 | Sensitive caching | `Cache-Control: private, no-store, max-age=0` and `Vary: Cookie` on all responses while enabled. |
 | Accidental indexing | `X-Robots-Tag` on every enabled response plus login-page robots metadata. |
-| Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; no JavaScript. |
-| Oversized input | Form content type required; body capped at 4 KiB; password capped at 1,024 characters. |
+| Login-page injection | All text/attributes escaped; colors and logo URLs constrained; restrictive CSP; a nonce authorizes only the fixed progressive-enhancement script. No user text is interpolated into JavaScript. Forms also work with scripting disabled. |
+| Oversized input | Form content type required; body capped at 16 KiB to allow URL-encoded Unicode passwords; password capped at 1,024 UTF-16 code units. |
+| Proxy origin confusion | Optional exact public origin controls source validation and secure-cookie detection; forwarding headers are not implicitly trusted. |
+| Limiter outage | Consume/reset failures return a recoverable 503 without a session and emit a secret-free unavailable event. |
+| Astro static login output | Prerendered middleware contexts fail explicitly; protected routes must execute on the server. Static assets still need a host-level gate. |
 | Node adapter bypass | Express, Fastify, and Vite reconstruct a validated HTTP(S) URL from the raw target, reject malformed or ambiguous targets before continuation, and consume only bounded login bodies. |
 | Downstream header weakening | Node response setters, removals, direct `writeHead` calls, and late Fastify send hooks cannot replace Sitegate's cache, cookie-variance, or anti-indexing headers. |
 | Hono middleware bypass | The Hono adapter uses the original raw request and must be registered first and root-scoped; it clears Hono's previous response before installing the final secured response. |

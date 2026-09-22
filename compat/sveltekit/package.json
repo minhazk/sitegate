@@ -1,0 +1,21 @@
+{
+  "name": "sitegate-sveltekit-compat",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.16.0",
+  "scripts": {
+    "check": "pnpm --dir ../.. pack --out compat/sveltekit/sitegate-compat.tgz && pnpm install --ignore-workspace --lockfile=false --ignore-scripts && svelte-kit sync && tsc --noEmit && vite build && node ../web-smoke.mjs sveltekit"
+  },
+  "dependencies": {
+    "sitegate": "file:./sitegate-compat.tgz",
+    "@sveltejs/kit": "2.70.3",
+    "@sveltejs/adapter-node": "5.5.7",
+    "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "svelte": "5.57.1",
+    "vite": "8.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

@@ -207,7 +207,7 @@ describe("Fastify adapter", () => {
         origin: "http://localhost",
         "sec-fetch-site": "same-origin",
       },
-      payload: "x".repeat(4097),
+      payload: "x".repeat(16385),
     });
     expect(response.statusCode, response.body).toBe(413);
   });

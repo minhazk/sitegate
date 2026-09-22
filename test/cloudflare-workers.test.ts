@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   cloudflareClientId,
   createSitegateWorker,
-  SitegateWorkerConfigurationError,
   type SitegateWorkerConfig,
+  SitegateWorkerConfigurationError,
   type SitegateWorkerContext,
 } from "../src/cloudflare-workers.js";
 import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";

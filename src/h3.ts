@@ -1,10 +1,10 @@
-import { eventHandler, type App } from "h3";
+import { type App, eventHandler } from "h3";
 import { SitegateConfigurationError } from "./config.js";
 import { createSitegate } from "./gate.js";
 import {
+  type H3SitegateOptions,
   handleH3Sitegate,
   hasH3Sitegate,
-  type H3SitegateOptions,
   lockH3AppHandler,
 } from "./h3-internal.js";
 import type { SitegateConfig } from "./types.js";

@@ -6,6 +6,32 @@ import { cookieValue, TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
 const NEXT_ORIGIN = "https://preview.example.test";
 
 describe("Next.js adapter", () => {
+  it("uses the configured public origin for proxy redirects without losing relative path context", async () => {
+    const proxy = sitegate({
+      password: TEST_PASSWORD,
+      secret: TEST_SECRET,
+      publicOrigin: NEXT_ORIGIN,
+    });
+    const redirect = await proxy(
+      new NextRequest("http://internal:3000/dashboard?tab=1", { headers: { Accept: "text/html" } }),
+    );
+    const location = new URL(redirect.headers.get("location") ?? "");
+    expect(location.origin).toBe(NEXT_ORIGIN);
+    expect(location.searchParams.get("next")).toBe("/dashboard?tab=1");
+
+    const composed = createSitegateNext(
+      { enabled: false, publicOrigin: NEXT_ORIGIN },
+      {
+        next: () => new Response(null, { status: 303, headers: { Location: "../welcome" } }),
+      },
+    );
+    expect(
+      (
+        await composed(new NextRequest("http://internal:3000/project/settings/account"))
+      ).headers.get("location"),
+    ).toBe(`${NEXT_ORIGIN}/project/welcome`);
+  });
+
   it("composes with NextResponse.next when disabled", async () => {
     const proxy = sitegate({ enabled: false });
     const result = await proxy(new NextRequest("https://preview.example.test/dashboard"));

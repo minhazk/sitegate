@@ -6,6 +6,30 @@ All notable changes to Sitegate will be documented here. The project follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-22
+
+### Fixed
+
+- Fix real browser form submissions rejected with `Origin: null` under the previous referrer
+  policy. Opaque origins require same-origin document-navigation metadata and a valid signed CSRF
+  token; cross-site, same-site, sandboxed, and malformed sources remain rejected.
+- Keep existing login tabs usable when another tab opens or signs in, while preserving each
+  signed form's expiry and clearing the pre-session cookie after successful authentication.
+- Refresh expired forms in place; distinguish missing cookies; prevent auth-endpoint return loops.
+- Allow URL-encoded Unicode passwords up to the documented input limit with bounded 16 KiB bodies.
+- Report missing/malformed secrets and passwords as actionable configuration errors.
+- Fail closed with a recoverable page when a shared login limiter is unavailable.
+
+### Added
+
+- Add `publicOrigin` for deployments behind proxies that expose internal URLs to the application.
+- Add `sitegate/sveltekit` and `sitegate/astro`, with packed-consumer TypeScript checks, production
+  builds, and running-server login/session/API/logout tests.
+- Add accessible password visibility, Caps Lock feedback, submission state, retry delays, and
+  recoverable browser errors. The form still works without JavaScript; enhancement uses a CSP nonce.
+- Add customizable recovery/interaction strings and the secret-free `login_unavailable` event.
+- Add Chromium, Firefox, and WebKit login regression tests to CI and a framework setup guide.
+
 ## [0.5.1] - 2026-09-09
 
 ### Fixed

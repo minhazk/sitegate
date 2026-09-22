@@ -19,7 +19,8 @@ application using server-only configuration.
 - Password verification and session handling are server-side.
 - Signed, tamper-resistant, expiring sessions use standard HMAC-SHA-256 JWTs via `jose`.
 - Cookies are `HttpOnly`, `SameSite=Strict`, and `Secure` on HTTPS by default.
-- The built-in responsive login page has no client JavaScript or UI dependencies.
+- The responsive login page works without JavaScript. A small optional enhancement adds password
+  visibility, Caps Lock feedback, and a submitting state, with no UI dependencies.
 - Login CSRF protection combines same-origin checks, Fetch Metadata, a signed token, and a
   short-lived `__Host-` pre-session cookie.
 - A rolling, process-local brute-force limiter is included, can be disabled completely, and accepts
@@ -27,13 +28,35 @@ application using server-only configuration.
 - Protected responses are marked `private, no-store`, varied on cookies, and excluded from compliant
   search indexing.
 - The core uses standard `Request` and `Response`; adapters cover Next.js 14–16, Vite 6–8,
-  Express 4–5, Fastify 5, Hono 4, Cloudflare Workers, H3 1, and Nuxt 3–4.
+  Express 4–5, Fastify 5, Hono 4, Cloudflare Workers, H3 1, Nuxt 3–4, SvelteKit, and Astro.
 
 ## Install
 
 ```bash
 pnpm add sitegate
 ```
+
+Choose the integration that runs **on your server**, set a password and a stable signing secret,
+then register Sitegate before your application routes. There is no database or hosted Sitegate
+account to set up.
+
+| Your stack | Integration | Where it runs |
+| --- | --- | --- |
+| Next.js / OpenNext / SST | [`sitegate/next`](#minimal-nextjs-setup) | Proxy or Middleware, with the broad matcher |
+| React, Vue, Svelte, Angular, or Solid using Vite | [`sitegate/vite`](#vite-development-and-local-preview) | Development and local preview; deployed static files need a host gate |
+| Express / React Router / Remix on Express | [`sitegate/express`](#express) | Before parsers, static files, and the framework request handler |
+| Fastify / NestJS on Fastify | [`sitegate/fastify`](#fastify) | Root server plugin, before routes |
+| Hono | [`sitegate/hono`](#hono) | First root middleware |
+| Cloudflare Workers / Pages behind a Worker | [`sitegate/cloudflare-workers`](#cloudflare-workers) | Outer fetch handler, including assets |
+| Nuxt / Nitro | [`sitegate/nuxt`](#nuxt) | Nitro server plugin |
+| SvelteKit | [`sitegate/sveltekit`](#sveltekit) | First server hook; server-rendered routes |
+| Astro | [`sitegate/astro`](#astro) | First middleware; server output |
+| H3 | [`sitegate/h3`](#h3) | Outer application handler |
+| Other servers using Web Request/Response | [Core API](#framework-neutral-core) | Outer server request handler |
+
+Frontend frameworks do not need a special login component. A static-only deployment cannot run
+server-side authentication by installing an npm dependency: put the gate at its host, edge, or proxy.
+The [framework guide](docs/FRAMEWORKS.md) covers composition, public URLs, and asset boundaries.
 
 Sitegate requires Node.js 20 or newer, with no upper version limit. Individual frameworks may
 require a newer Node.js version; follow the requirements of the framework version you install.
@@ -64,6 +87,14 @@ Generate a signing secret instead of inventing one:
 ```bash
 openssl rand -base64 32
 ```
+
+Save this value once and use it on every instance of the deployment. Generating a new secret on
+every request or cold start invalidates login forms and sessions intermittently.
+
+Choose your login-attempt policy before deploying: `sitegate()` includes an in-memory limiter for
+a single server. For Vercel, Lambda, or other distributed hosts, provide a shared limiter or choose
+`sitegate({ rateLimit: false })` explicitly for zero-infrastructure, unthrottled operation. See
+[rate-limit choices](#lightweight-rate-limit-choices). Sitegate never silently disables throttling.
 
 On Next.js 16, create `proxy.ts` at the same level as `app` or `pages`:
 
@@ -209,7 +240,7 @@ app.use(express.static("public"));
 ```
 
 The adapter supports Express 4.22.2 through Express 5 and reads `SITEGATE_PASSWORD` and
-`SITEGATE_SECRET` by default. It consumes only a login submission body, caps that body at 4 KiB,
+`SITEGATE_SECRET` by default. It consumes only a login submission body, caps that body at 16 KiB,
 and leaves every other downstream request stream untouched. Sitegate responses preserve separate
 `Set-Cookie` fields, while allowed downstream responses keep their status and body with Sitegate's
 cache and indexing headers locked in place.
@@ -446,6 +477,46 @@ context by design. Sitegate event callbacks remain observed and use a host-suppl
 lifecycle when one is already available, but they must stay best-effort; use upstream access logs
 when every denied request must be recorded independently of application hooks.
 
+## SvelteKit
+
+In `src/hooks.server.ts`, use SvelteKit's private environment variables:
+
+```ts
+import { env } from "$env/dynamic/private";
+import { sitegate } from "sitegate/sveltekit";
+
+export const handle = sitegate({
+  password: env.SITEGATE_PASSWORD ?? "",
+  secret: env.SITEGATE_SECRET ?? "",
+});
+```
+
+When composing hooks, use `sequence(sitegate(config), existingHandle)` from `@sveltejs/kit/hooks`.
+The complete event, locals, and downstream request body are preserved. Keep private routes
+server-rendered; SvelteKit's hook does not protect prerendered pages or files in `static/`.
+For those, wrap the deployed server or use an edge gate. Choose a shared limiter or explicit
+`rateLimit: false` on distributed hosts. Tested against SvelteKit 2.70.3 with adapter-node 5.5.7.
+
+## Astro
+
+Use `output: "server"` and a server adapter in `astro.config.mjs`. In `src/middleware.ts`:
+
+```ts
+import { sitegate } from "sitegate/astro";
+
+export const onRequest = sitegate({
+  password: import.meta.env.SITEGATE_PASSWORD ?? "",
+  secret: import.meta.env.SITEGATE_SECRET ?? "",
+});
+```
+
+Keep these variables server-only, without the `PUBLIC_` prefix. On hosts that supply runtime
+bindings, resolve private values using the host's server environment instead. Place Sitegate first
+in `sequence()` when composing middleware. Prerendering a protected page fails with a setup error
+instead of emitting a broken static login form. Static files in `public/` still require protection
+at the host or edge. Choose a shared limiter or explicit `rateLimit: false` on distributed hosts.
+Tested against Astro 7.3.3 with its Node adapter 11.1.6.
+
 ## Configuration
 
 ```ts
@@ -479,6 +550,7 @@ export const proxy = sitegate({
 | --- | --- | --- |
 | `password` | `SITEGATE_PASSWORD` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 1 Unicode character. Hono, Workers, H3, Nuxt, and the core require an explicit value. The application owner controls password-strength policy. |
 | `secret` | `SITEGATE_SECRET` in the Next/Vite/Express/Fastify adapters | Required when enabled; at least 32 UTF-8 bytes. Hono, Workers, H3, Nuxt, and the core require an explicit value. Keep separate from the password. |
+| `publicOrigin` | Request URL origin | Set the exact public origin, such as `https://preview.example.com`, when a proxy presents an internal HTTP URL. Controls origin checks and secure-cookie detection; Next.js also uses it for relative redirects. Never derive it from untrusted forwarding headers. |
 | `enabled` | `true` | Makes protection easy to remove or scope by environment. |
 | `sessionDuration` | 8 hours | Absolute lifetime; between 60 seconds and 30 days. |
 | `loginPath` | `/_sitegate/login` | Built-in GET/POST login endpoint. |
@@ -490,7 +562,7 @@ export const proxy = sitegate({
 | `rateLimit` | process-local rolling window | `10` attempts/trusted client and `200` globally per 15 minutes. Successful logins are removed from both budgets. Set `false` for zero-infrastructure mode, or pass your own `limiter`. |
 | `branding` | Sitegate defaults | Text, a root-relative logo path without a query or hash, and a six-digit accent color. No raw HTML. Add the logo path to `excludedPaths` if it must load before login. |
 | `strings` | English defaults | HTML language, field/button/footer labels, and escaped incorrect-password, expired-form, and rate-limit messages. |
-| `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events. |
+| `onEvent` | none | Receives best-effort, non-blocking, secret-free success/failure/limit/session/logout events, plus `login_unavailable` when the attempt limiter cannot be checked or reset. |
 
 String path matchers respect boundaries: `/admin` matches `/admin` and `/admin/users`, but not
 `/administrator`.
@@ -655,6 +727,44 @@ See the [design research](docs/RESEARCH.md), full [threat model](docs/THREAT_MOD
 
 ## Troubleshooting
 
+**A normal login shows “Cross-site login request rejected” or raw JSON**
+
+Upgrade to 0.6.0 or newer. Older versions could reject their own browser form because
+`Referrer-Policy: no-referrer` produced `Origin: null`. The fix uses a same-origin referrer policy
+on the login page and accepts an opaque origin only with same-origin, top-level-navigation Fetch
+Metadata. Signed CSRF validation still runs. Browser errors now show a recoverable login form.
+
+**Sign-in sometimes expires after opening another tab**
+
+Upgrade to 0.6.0 or newer. Login pages now reuse the browser's pre-session nonce so one tab does not
+invalidate another. Each signed form still expires after 10 minutes. An expired form is refreshed
+in place: enter the password again. A missing cookie gets its own message about allowing cookies.
+
+**Forms or sessions fail intermittently across requests**
+
+Ensure `SITEGATE_SECRET` and `SITEGATE_PASSWORD` are identical on all instances and regions. Keep
+the secret stable across cold starts. Do not use `randomUUID()` or `randomBytes()` inside the
+request handler to configure the signing secret. Keep the deployment clocks synchronized.
+
+**The browser uses HTTPS but the server sees HTTP or an internal hostname**
+
+Set `publicOrigin: "https://preview.example.com"` in any adapter. This fixes source validation and
+secure-cookie selection without trusting arbitrary `X-Forwarded-*` headers. Use the exact browser
+origin, including a nonstandard port when relevant. Configure separate gates for separate public
+origins. The Express/H3 `origin` adapter option remains available for trusted dynamic topologies.
+
+**Login fails after adding Express middleware**
+
+Register Sitegate before `express.urlencoded()`, static files, and the application's request
+handler. Sitegate needs the original login form stream. Application request bodies pass through
+untouched after authentication.
+
+**“Sign-in is temporarily unavailable”**
+
+Check the shared limiter's storage and credentials. Sitegate fails closed with a recoverable `503`
+page and emits `login_unavailable`; it never exposes the storage error or signs in without checking
+the attempt limit.
+
 **`SitegateConfigurationError: password must contain at least 1 character`**
 Set a non-empty shared password. Sitegate leaves password-strength policy to the application owner
 while continuing to fail closed on missing configuration.
@@ -696,6 +806,10 @@ pnpm compat:cloudflare-workers
 pnpm compat:next
 pnpm compat:nuxt
 pnpm compat:vite
+pnpm compat:sveltekit
+pnpm compat:astro
+pnpm exec playwright install chromium firefox webkit
+pnpm test:browser
 ```
 
 The check pipeline runs linting, formatting verification, strict TypeScript, unit/integration/security

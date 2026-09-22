@@ -1,8 +1,8 @@
-import type { AddressInfo } from "node:net";
 import { request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { viteSitegate } from "../src/vite.js";
 import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";
 
@@ -146,7 +146,7 @@ describe("Vite adapter", () => {
         },
       );
       request.once("error", reject);
-      request.write("x".repeat(4097));
+      request.write("x".repeat(16385));
     });
     expect(status).toBe(413);
   });
@@ -159,7 +159,7 @@ describe("Vite adapter", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
-            "Content-Length": "5000",
+            "Content-Length": "20000",
             Origin: baseUrl,
             "Sec-Fetch-Site": "same-origin",
           },

@@ -14,7 +14,8 @@ export interface CookieNames {
 export function cookieNames(request: Request, config: ResolvedConfig): CookieNames {
   const secure =
     config.secureCookies === true ||
-    (config.secureCookies === "auto" && new URL(request.url).protocol === "https:");
+    (config.secureCookies === "auto" &&
+      new URL(config.publicOrigin ?? request.url).protocol === "https:");
   return {
     session: secure ? SECURE_SESSION_COOKIE : SESSION_COOKIE,
     csrf: secure ? SECURE_CSRF_COOKIE : CSRF_COOKIE,

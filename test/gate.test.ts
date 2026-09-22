@@ -47,7 +47,8 @@ describe("request protection", () => {
     expect(html).not.toContain('role="alert"');
     expect(html).not.toContain(TEST_PASSWORD);
     expect(html).not.toContain("do-not-leak-this-secret");
-    expect(html).not.toContain("<script");
+    expect(html).toContain("<script nonce=");
+    expect(response.headers.get("content-security-policy")).toContain("script-src 'nonce-");
   });
 
   it("customizes and escapes the built-in page strings", async () => {
@@ -453,7 +454,7 @@ describe("login and logout security", () => {
         headers: {
           ...headers,
           "Content-Type": "application/x-www-form-urlencoded",
-          "Content-Length": "5000",
+          "Content-Length": "20000",
         },
         body: "password=x",
       }),
@@ -464,7 +465,7 @@ describe("login and logout security", () => {
     let cancelled = false;
     const streamedBody = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(new Uint8Array(4096));
+        controller.enqueue(new Uint8Array(16384));
         controller.enqueue(new Uint8Array([1]));
       },
       cancel() {

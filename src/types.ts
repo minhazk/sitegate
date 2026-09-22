@@ -9,6 +9,7 @@ export type SitegateEvent =
   | { type: "login_failed"; clientId: string }
   | { type: "login_rate_limited"; clientId: string }
   | { type: "invalid_session" }
+  | { type: "login_unavailable" }
   | { type: "logout" };
 
 export interface RateLimitDecision {
@@ -72,6 +73,21 @@ export interface SitegateStrings {
   expiredForm?: string;
   /** Rate-limit message. */
   rateLimited?: string;
+  /** Message for a rejected request origin. */
+  invalidRequest?: string;
+  /** Message when a form cannot be read or exceeds the request limit. */
+  invalidForm?: string;
+  /** Message when the browser did not return the login cookie. */
+  cookiesRequired?: string;
+  /** Message when the login service cannot check attempt limits. */
+  unavailable?: string;
+  /** Password visibility controls and progressive enhancement labels. */
+  showPassword?: string;
+  hidePassword?: string;
+  signingIn?: string;
+  capsLock?: string;
+  /** Retry delay. `{seconds}` is replaced with the server-provided wait time. */
+  retryAfter?: string;
 }
 
 export interface SitegateConfig {
@@ -79,6 +95,8 @@ export interface SitegateConfig {
   password: string;
   /** Signing secret. Must contain at least 32 UTF-8 bytes when enabled. */
   secret: string;
+  /** Exact browser-facing origin behind a reverse proxy, e.g. `https://preview.example.com`. */
+  publicOrigin?: string;
   /** Turn protection on or off without removing integration code. Default: true. */
   enabled?: boolean;
   /** Absolute session lifetime in seconds. Default: 28,800 (8 hours). */
