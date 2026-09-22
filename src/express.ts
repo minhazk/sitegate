@@ -3,11 +3,11 @@ import { createSitegate } from "./gate.js";
 import {
   isNodeContinuation,
   lockNodeResponseHeaders,
+  type NodeRequestOrigin,
   nodeContinuationResponse,
   nodeWebRequest,
-  sendNodeResponse,
   SitegateNodeRequestError,
-  type NodeRequestOrigin,
+  sendNodeResponse,
 } from "./node-http.js";
 import { jsonError } from "./response.js";
 import type { SitegateConfig } from "./types.js";

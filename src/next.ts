@@ -23,13 +23,24 @@ export interface SitegateNextOptions {
   next?: (request: NextRequest) => MaybePromise<Response | undefined>;
 }
 
-function withAbsoluteRedirect(response: Response, request: NextRequest): Response {
+function withAbsoluteRedirect(
+  response: Response,
+  request: NextRequest,
+  publicOrigin?: string,
+): Response {
   const location = response.headers.get("Location");
   if (location === null) return response;
 
   let absoluteLocation: string;
   try {
-    absoluteLocation = new URL(location, request.url).toString();
+    const base = new URL(request.url);
+    if (publicOrigin !== undefined) {
+      const origin = new URL(publicOrigin);
+      base.protocol = origin.protocol;
+      base.host = origin.host;
+      base.port = origin.port;
+    }
+    absoluteLocation = new URL(location, base).toString();
   } catch {
     return response;
   }
@@ -59,6 +70,7 @@ export function createSitegateNext(
     withAbsoluteRedirect(
       await gate.handle(request, async () => (await next(request)) ?? NextResponse.next()),
       request,
+      config.publicOrigin,
     );
 }
 

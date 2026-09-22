@@ -1,5 +1,5 @@
-import { Readable } from "node:stream";
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { nodeWebRequest, SitegateNodeRequestError } from "../src/node-http.js";
 import { makeGate } from "./helpers.js";
@@ -111,7 +111,7 @@ describe("shared Node request conversion", () => {
   it("captures at most 4,097 bytes from an unknown-length login stream", async () => {
     const converted = await nodeWebRequest(
       incoming({
-        body: "x".repeat(5000),
+        body: "x".repeat(20000),
         headers: {
           "content-type": "application/x-www-form-urlencoded",
           host: "preview.example.test",
@@ -121,15 +121,15 @@ describe("shared Node request conversion", () => {
       }),
       gate,
     );
-    expect((await converted.arrayBuffer()).byteLength).toBe(4097);
+    expect((await converted.arrayBuffer()).byteLength).toBe(16385);
   });
 
   it("does not attach a declared-oversized login stream to the web request", async () => {
     const converted = await nodeWebRequest(
       incoming({
-        body: "x".repeat(5000),
+        body: "x".repeat(20000),
         headers: {
-          "content-length": "5000",
+          "content-length": "20000",
           "content-type": "application/x-www-form-urlencoded",
           host: "preview.example.test",
         },
@@ -139,7 +139,7 @@ describe("shared Node request conversion", () => {
       gate,
     );
     expect(converted.body).toBeNull();
-    expect(converted.headers.get("content-length")).toBe("5000");
+    expect(converted.headers.get("content-length")).toBe("20000");
   });
 
   it("leaves login streams unread when body capture is disabled", async () => {

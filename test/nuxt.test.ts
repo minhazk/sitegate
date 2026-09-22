@@ -1,9 +1,9 @@
-import { createApp, eventHandler, readRawBody, toWebHandler, type App } from "h3";
+import { type App, createApp, eventHandler, readRawBody, toWebHandler } from "h3";
 import { describe, expect, it, vi } from "vitest";
 import {
   createSitegateNuxt,
-  SitegateNuxtConfigurationError,
   type SitegateNuxtConfig,
+  SitegateNuxtConfigurationError,
   type SitegateNuxtPlugin,
 } from "../src/nuxt.js";
 import { TEST_PASSWORD, TEST_SECRET } from "./helpers.js";

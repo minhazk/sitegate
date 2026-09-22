@@ -3,10 +3,15 @@
   "files": {
     "includes": [
       "**",
-      "!dist",
+      "!**/dist",
       "!coverage",
       "!**/.nuxt",
       "!**/.output",
+      "!**/.svelte-kit",
+      "!**/.astro",
+      "!compat/sveltekit/build",
+      "!test-results",
+      "!playwright-report",
       "!node_modules",
       "!compat/cloudflare-workers/worker-configuration.d.ts"
     ]

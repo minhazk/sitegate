@@ -10,7 +10,7 @@ import { canonicalPathname } from "./paths.js";
 import type { Sitegate } from "./types.js";
 
 const CONTINUE_HEADER = "x-sitegate-node-next";
-const MAX_LOGIN_BODY_BYTES = 4096;
+const MAX_LOGIN_BODY_BYTES = 16 * 1024;
 const MAX_CAPTURED_BODY_BYTES = MAX_LOGIN_BODY_BYTES + 1;
 
 export type NodeRequestOrigin<T extends IncomingMessage = IncomingMessage> =

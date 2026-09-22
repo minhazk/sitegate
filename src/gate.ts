@@ -1,13 +1,19 @@
-import { cookieNames, expireCookie, readCookie, serializeCookie } from "./cookies.js";
 import { resolveConfig } from "./config.js";
+import { cookieNames, expireCookie, readCookie, serializeCookie } from "./cookies.js";
 import { createCryptoService } from "./crypto.js";
 import { canonicalPathname, isProtectedPath, safeDestination } from "./paths.js";
 import { createMemoryRateLimiter, defaultClientId } from "./rate-limit.js";
 import { jsonError, redirect, secureResponse } from "./response.js";
-import type { LoginAttemptLimiter, Sitegate, SitegateConfig, SitegateEvent } from "./types.js";
-import { loginPage } from "./ui.js";
+import type {
+  LoginAttemptLimiter,
+  RateLimitDecision,
+  Sitegate,
+  SitegateConfig,
+  SitegateEvent,
+} from "./types.js";
+import { type LoginPageStatus, loginPage } from "./ui.js";
 
-const MAX_LOGIN_BODY_BYTES = 4096;
+const MAX_LOGIN_BODY_BYTES = 16 * 1024;
 
 async function readLoginBody(request: Request): Promise<string | undefined> {
   const reader = request.body?.getReader();
@@ -53,20 +59,31 @@ function requestDestination(request: Request): string {
 }
 
 function acceptsHtml(request: Request): boolean {
-  return request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html");
+  return (request.headers.get("accept") ?? "").includes("text/html");
 }
 
-function sourceHeadersAllowRequest(request: Request, allowMissing: boolean): boolean {
+function sourceHeadersAllowRequest(
+  request: Request,
+  allowMissing: boolean,
+  publicOrigin?: string,
+): boolean {
   const fetchSite = request.headers.get("sec-fetch-site");
   if (fetchSite === "cross-site" || fetchSite === "same-site") return false;
 
-  const target = new URL(request.url).origin;
+  const target = new URL(publicOrigin ?? request.url).origin;
   let hasSourceHeader = false;
 
   const origin = request.headers.get("origin");
   if (origin !== null) {
     hasSourceHeader = true;
-    if (origin !== target) return false;
+    // Privacy policies can serialize a real same-origin form's Origin as "null".
+    // Fetch Metadata is browser-controlled; opaque cross-site/sandboxed forms still fail.
+    const trustedNavigation =
+      origin === "null" &&
+      fetchSite === "same-origin" &&
+      request.headers.get("sec-fetch-mode") === "navigate" &&
+      request.headers.get("sec-fetch-dest") === "document";
+    if (origin !== target && !trustedNavigation) return false;
   }
 
   const referer = request.headers.get("referer");
@@ -112,6 +129,12 @@ export function createSitegate(input: SitegateConfig): Sitegate {
           windowSeconds: rateOptions.windowSeconds ?? 15 * 60,
         }));
 
+  function loginDestination(value: string | null): string {
+    const destination = safeDestination(value);
+    const pathname = canonicalPathname(new URL(destination, "https://sitegate.invalid").pathname);
+    return pathname === config.loginPath || pathname === config.logoutPath ? "/" : destination;
+  }
+
   async function getClientId(request: Request): Promise<string> {
     if (rateOptions?.getClientId !== undefined) return rateOptions.getClientId(request);
     return defaultClientId(request, rateOptions?.trustProxy ?? false);
@@ -131,16 +154,24 @@ export function createSitegate(input: SitegateConfig): Sitegate {
     request: Request,
     destination: string,
     error?: string,
-    status?: 200 | 401 | 403 | 429,
+    status?: LoginPageStatus,
+    retryAfterSeconds?: number,
   ): Promise<Response> {
     const names = cookieNames(request, config);
-    const nonce = crypto.randomUUID();
+    const existingNonce = readCookie(request, names.csrf);
+    // Keep open forms usable across tabs/retries; the signed token still expires after 10 minutes.
+    const nonce =
+      existingNonce !== undefined &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(existingNonce)
+        ? existingNonce
+        : crypto.randomUUID();
     const response = loginPage({
       config,
       csrfToken: await cryptoService.createCsrf(nonce, config.now()),
       destination,
       ...(error === undefined ? {} : { error }),
       ...(status === undefined ? {} : { status }),
+      ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
     });
     appendSetCookie(
       response,
@@ -155,19 +186,30 @@ export function createSitegate(input: SitegateConfig): Sitegate {
 
   async function handleLogin(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const destination = safeDestination(url.searchParams.get("next"));
+    const destination = loginDestination(url.searchParams.get("next"));
+    const requestError = (message: string, status: 400 | 403 | 413) =>
+      acceptsHtml(request)
+        ? renderLogin(
+            request,
+            destination,
+            status === 403 ? config.strings.invalidRequest : config.strings.invalidForm,
+            status,
+          )
+        : jsonError(message, status);
     if (request.method === "GET") {
       if (await isAuthenticated(request)) return redirect(destination);
       return renderLogin(request, destination);
     }
     if (request.method !== "POST") return jsonError("Method not allowed.", 405);
-    if (!sourceHeadersAllowRequest(request, true)) {
-      return jsonError("Cross-site login request rejected.", 403);
+    if (!sourceHeadersAllowRequest(request, true, config.publicOrigin)) {
+      return requestError("Cross-site login request rejected.", 403);
     }
+    // A second tab may still show a form after another tab has signed in.
+    if (await isAuthenticated(request)) return redirect(destination);
 
     const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
     if (contentType !== "application/x-www-form-urlencoded") {
-      return jsonError("Expected an HTML form submission.", 400);
+      return requestError("Expected an HTML form submission.", 400);
     }
     const contentLength = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(contentLength) && contentLength > MAX_LOGIN_BODY_BYTES) {
@@ -176,14 +218,14 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       } catch {
         // The declared-size rejection does not depend on cancellation support.
       }
-      return jsonError("Login request is too large.", 413);
+      return requestError("Login request is too large.", 413);
     }
     const body = await readLoginBody(request);
     if (body === undefined) {
-      return jsonError("Login request is too large.", 413);
+      return requestError("Login request is too large.", 413);
     }
     const form = new URLSearchParams(body);
-    const submittedDestination = safeDestination(form.get("next"));
+    const submittedDestination = loginDestination(form.get("next") ?? url.searchParams.get("next"));
     const names = cookieNames(request, config);
     const csrfCookie = readCookie(request, names.csrf);
     const csrfToken = form.get("csrf");
@@ -192,11 +234,23 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       csrfToken === null ||
       !(await cryptoService.verifyCsrf(csrfToken, csrfCookie, config.now()))
     ) {
-      return renderLogin(request, submittedDestination, config.strings.expiredForm, 403);
+      return renderLogin(
+        request,
+        submittedDestination,
+        csrfCookie === undefined ? config.strings.cookiesRequired : config.strings.expiredForm,
+        403,
+      );
     }
 
-    const clientId = await getClientId(request);
-    const limit = await limiter?.consume(clientId, config.now());
+    let clientId: string;
+    let limit: RateLimitDecision | undefined;
+    try {
+      clientId = await getClientId(request);
+      limit = await limiter?.consume(clientId, config.now());
+    } catch {
+      emit(config.onEvent, { type: "login_unavailable" });
+      return renderLogin(request, submittedDestination, config.strings.unavailable, 503);
+    }
     if (limit?.limited === true) {
       emit(config.onEvent, { type: "login_rate_limited", clientId });
       const response = await renderLogin(
@@ -204,6 +258,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
         submittedDestination,
         config.strings.rateLimited,
         429,
+        limit.retryAfterSeconds,
       );
       if (limit.retryAfterSeconds !== undefined) {
         response.headers.set("Retry-After", String(limit.retryAfterSeconds));
@@ -217,7 +272,12 @@ export function createSitegate(input: SitegateConfig): Sitegate {
       return renderLogin(request, submittedDestination, config.strings.incorrectPassword);
     }
 
-    await limiter?.reset(clientId);
+    try {
+      await limiter?.reset(clientId);
+    } catch {
+      emit(config.onEvent, { type: "login_unavailable" });
+      return renderLogin(request, submittedDestination, config.strings.unavailable, 503);
+    }
     emit(config.onEvent, { type: "login_succeeded", clientId });
     const response = redirect(submittedDestination);
     appendSetCookie(
@@ -238,7 +298,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
 
   async function handleLogout(request: Request): Promise<Response> {
     if (request.method !== "POST") return jsonError("Method not allowed.", 405);
-    if (!sourceHeadersAllowRequest(request, false)) {
+    if (!sourceHeadersAllowRequest(request, false, config.publicOrigin)) {
       return jsonError("Cross-site logout request rejected.", 403);
     }
     const names = cookieNames(request, config);
@@ -264,7 +324,7 @@ export function createSitegate(input: SitegateConfig): Sitegate {
         return secureResponse(await next());
       }
       if (await isAuthenticated(request)) return secureResponse(await next());
-      if (acceptsHtml(request)) {
+      if (request.method === "GET" && acceptsHtml(request)) {
         const login = new URL(config.loginPath, request.url);
         login.searchParams.set("next", requestDestination(request));
         return redirect(`${login.pathname}${login.search}`, 307);

@@ -6,8 +6,8 @@ import {
   lockNodeResponseHeaders,
   nodeContinuationResponse,
   nodeWebRequest,
-  sendNodeResponse,
   SitegateNodeRequestError,
+  sendNodeResponse,
 } from "./node-http.js";
 import { jsonError } from "./response.js";
 import type { Sitegate, SitegateConfig } from "./types.js";

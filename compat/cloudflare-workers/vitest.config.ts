@@ -1,5 +1,5 @@
-import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { randomBytes } from "node:crypto";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 process.env["SITEGATE_PASSWORD"] ??= randomBytes(18).toString("base64url");

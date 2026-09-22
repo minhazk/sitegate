@@ -1,6 +1,6 @@
 {
   "name": "sitegate",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "A secure, self-hosted password gate for staging and preview websites.",
   "keywords": [
     "password-protection",
@@ -16,7 +16,9 @@
     "nuxt",
     "nitro",
     "middleware",
-    "security"
+    "security",
+    "sveltekit",
+    "astro"
   ],
   "license": "MIT",
   "author": "Minhaz",
@@ -77,7 +79,15 @@
       "types": "./dist/nuxt.d.ts",
       "import": "./dist/nuxt.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./sveltekit": {
+      "types": "./dist/sveltekit.d.ts",
+      "import": "./dist/sveltekit.js"
+    },
+    "./astro": {
+      "types": "./dist/astro.d.ts",
+      "import": "./dist/astro.js"
+    }
   },
   "engines": {
     "node": ">=20.0.0"
@@ -105,7 +115,10 @@
     "pack:check": "pnpm pack --dry-run",
     "test": "vitest",
     "test:run": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "compat:sveltekit": "pnpm build && pnpm --dir compat/sveltekit check",
+    "compat:astro": "pnpm build && pnpm --dir compat/astro check",
+    "test:browser": "pnpm build && playwright test"
   },
   "dependencies": {
     "fastify-plugin": "^6.0.0",
@@ -141,6 +154,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
+    "@playwright/test": "1.63.0",
     "@types/express": "5.0.6",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",

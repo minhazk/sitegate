@@ -218,7 +218,7 @@ describe("Express adapter", () => {
         },
       );
       request.once("error", reject);
-      request.end("x".repeat(4097));
+      request.end("x".repeat(16385));
     });
     expect(status).toBe(413);
   });

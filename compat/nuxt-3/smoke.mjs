@@ -78,7 +78,7 @@ async function verifyProductionServer() {
     { redirect: "manual" },
   );
   assert.equal(loginPage.status, 200);
-  assertSecurityHeaders(loginPage);
+  assertSecurityHeaders(loginPage, "same-origin");
   assert.equal(loginPage.headers.get("x-compat-request-hook"), null);
   const csrfToken = /name="csrf" value="([^"]+)"/u.exec(await loginPage.clone().text())?.[1];
   assert.ok(csrfToken, "The login page must contain a CSRF token.");
@@ -213,9 +213,9 @@ function cookieValue(response, name) {
   throw new Error(`Missing ${name} cookie.`);
 }
 
-function assertSecurityHeaders(response) {
+function assertSecurityHeaders(response, referrerPolicy = "no-referrer") {
   assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
-  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(response.headers.get("referrer-policy"), referrerPolicy);
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow, noarchive, nosnippet");
 }

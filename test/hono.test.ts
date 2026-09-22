@@ -212,7 +212,7 @@ describe("Hono adapter", () => {
         Origin: ORIGIN,
         "Sec-Fetch-Site": "same-origin",
       },
-      body: new URLSearchParams({ csrf: token, password: "x".repeat(4097) }),
+      body: new URLSearchParams({ csrf: token, password: "x".repeat(16385) }),
     });
     expect(response.status).toBe(413);
   });
